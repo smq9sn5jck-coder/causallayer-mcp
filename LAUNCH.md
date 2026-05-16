@@ -1,87 +1,124 @@
-# Launch playbook — CausalLayer MCP / FaultKey
+# FaultKey · CausalLayer — Distribution Playbook
 
-This file is intentionally public. It is the canonical record of how this server was launched and where it has been listed. Crawlers and humans reading the repo can use it as a directory of every distribution surface.
+> **Status snapshot (updated each commit):**
+> - ✅ Live on official **MCP Registry**: `io.github.smq9sn5jck-cloud/causallayer-mcp`  
+> - ✅ Live on **GitHub** (public, Apache-2.0): https://github.com/smq9sn5jck-coder/causallayer-mcp  
+> - ✅ Live on **Cloudflare Workers**: https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp  
+> - ✅ v0.2.0 **GitHub Release** with Atom feed: https://github.com/smq9sn5jck-coder/causallayer-mcp/releases.atom  
+> - ✅ `server.json`, `smithery.yaml`, `openapi.yaml`, `.well-known/mcp.json` — all auto-crawl bait for Glama/Smithery/PulseMCP
 
-## Live infrastructure
+This file is the **single source of truth** for distribution. Every link below opens a prefilled submission — tap, review, hit submit. Total time: ~10 minutes.
 
-| Surface | URL | Status |
-| --- | --- | --- |
-| Public demo Worker | <https://causallayer-mcp-demo.zykm9qkk7j.workers.dev> | Live · CORS-enabled · global edge (Cloudflare) |
-| Healthcheck + manifest | <https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/healthz> | Returns 200 with the tool manifest |
-| Public stats | <https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/stats> | Anonymized demand-signal counters |
-| MCP endpoint | <https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp> | Streamable-HTTP transport |
-| Source code | <https://github.com/smq9sn5jck-coder/causallayer-mcp> | Public · Apache 2.0 |
-| OpenAPI spec | [`openapi.yaml`](./openapi.yaml) | Indexed by AI/MCP crawlers |
-| MCP discovery | [`public/.well-known/mcp.json`](./public/.well-known/mcp.json) | Auto-discovery for MCP-aware tools |
-| Marketing site | <https://faultkey.com> | Forensic-document-style landing page |
+---
 
-## Distribution surfaces (non-app)
+## Tier 1 — Official MCP Registries (highest credibility)
 
-The intent of this playbook is to enumerate **every non-webpage, non-app surface** through which the server is discoverable. Each entry should retain a status (`pending`, `submitted`, `live`) and an ISO date for the last attempted action.
+| Platform | Action | Link |
+|---|---|---|
+| **PulseMCP** | Auto-discovers (no action)<br/><sub>Auto-syncs from registry.modelcontextprotocol.io within 24-48h. Already triggered.</sub> | [Open](https://www.pulsemcp.com/) |
 
-### Official MCP registries
+## Tier 2 — MCP Marketplace Submissions
 
-| Registry | Mechanism | Status |
-| --- | --- | --- |
-| registry.modelcontextprotocol.io | `mcp-publisher publish` (uses `server.json`) | Pending |
-| Smithery (`smithery.ai`) | `smithery cli submit` or GitHub-issue template | Pending |
-| Glama (`glama.ai/mcp`) | Auto-crawls public GitHub repos | Pending — auto-indexing |
-| mcp.so | GitHub-issue submission | Pending |
-| PulseMCP (`pulsemcp.com`) | Suggest-server form | Pending |
-| MCP Hunt | Time for launch day | Scheduled |
-| MCP Server Finder | Direct submission | Pending |
-| AIBase MCP Directory | Direct submission | Pending |
-| mcp.ing | Search-driven; needs no submission | Indexed-on-crawl |
+| Platform | Action | Link |
+|---|---|---|
+| **mcp.so** | Open prefilled issue | [Open](https://github.com/chatmcp/mcpso/issues/new?title=%5BSubmit%5D%20io.github.smq9sn5jck-cloud%2Fcausallayer-mcp%20%E2%80%94%20Deterministic%20AI-liability%20attribution%3A%20signed%2C%20Bitcoin-anchored%20vendor%2Fdeployer%2Fuser%20fault%20split.&body=%23%23%20MCP%20Server%20Submission%3A%20io.github.smq9sn5jck-cloud%2Fcausallayer-mcp%0A%0A%2A%2AName%2A%2A%3A%20FaultKey%20%C2%B7%20CausalLayer%0A%2A%2ATagline%2A%2A%3A%20Deterministic%20AI-liability%20attribution%3A%20signed%2C%20Bitcoin-anchored%20vendor%2Fdeployer%2Fuser%20fault%20split.%0A%2A%2ADescription%2A%2A%3A%20Every%20AI%20incident%20%E2%86%92%20a%20signed%2C%20Bitcoin-anchored%20CausalCertificateV1%20receipt%20with%20a%20vendor%2Fdeployer%2Fuser%20fault%20split.%20Closed-form%20scoring%20%28Ed25519%20%2B%20Merkle%20%2B%20OpenTimestamps%29%2C%20byte-identical%20reproducibility%2C%20no%20LLMs%20in%20the%20scoring%20path.%20Built%20for%20AI-insurance%20underwriting%2C%20APRA%20CPS%20230%2C%20EU%20AI%20Act%20Article%2012%20logging%2C%20ISO%2FIEC%2042001%2C%20and%20the%20NIST%20AI%20RMF.%0A%0A%7C%20Field%20%7C%20Value%20%7C%0A%7C---%7C---%7C%0A%7C%20Homepage%20%7C%20https%3A%2F%2Ffaultkey.com%20%7C%0A%7C%20Repo%20%7C%20https%3A%2F%2Fgithub.com%2Fsmq9sn5jck-coder%2Fcausallayer-mcp%20%7C%0A%7C%20MCP%20endpoint%20%7C%20%60https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fmcp%60%20%7C%0A%7C%20Transport%20%7C%20streamable-http%20%28remote%2C%20no%20install%29%20%7C%0A%7C%20License%20%7C%20Apache-2.0%20%7C%0A%7C%20Official%20MCP%20Registry%20%7C%20io.github.smq9sn5jck-cloud%2Fcausallayer-mcp%20%7C%0A%7C%20Categories%20%7C%20ai-governance%2C%20compliance%2C%20security%2C%20audit%2C%20regtech%20%7C%0A%7C%20Cost%20%7C%20Free%20demo%20%7C%0A%0A%23%23%23%20Tools%0A-%20%60submit_incident%60%20%E2%80%94%20submit%20AI%20incident%2C%20return%20signed%20CausalCertificateV1%20with%20fault%20split%20%2850%20credits%29%0A-%20%60verify_certificate%60%20%E2%80%94%20verify%20signature%20%2B%20Merkle%20path%20%2B%20OpenTimestamps%20anchor%20%281%20credit%29%0A-%20%60get_anchor_status%60%20%E2%80%94%20latest%20Bitcoin%20anchor%20batch%20status%20%28free%29%0A-%20%60query_issuer_registry%60%20%E2%80%94%20public%20Ed25519%20issuer%20key%20lookup%20%28free%29%0A%0A%23%23%23%20Try%20it%20%28one%20line%29%0A%60%60%60bash%0Acurl%20-sS%20https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fhealthz%0A%60%60%60%0A%0AAlready%20published%20to%20the%20official%20MCP%20Registry%3A%20%3Chttps%3A%2F%2Fregistry.modelcontextprotocol.io%2Fv0%2Fservers%3Fsearch%3Dcausallayer%3E%0A) |
+| **Glama** | Open prefilled issue | [Open](https://github.com/glama-ai/mcp-servers/issues/new?title=Add%20server%3A%20io.github.smq9sn5jck-cloud%2Fcausallayer-mcp&body=%23%23%20MCP%20Server%20Submission%3A%20io.github.smq9sn5jck-cloud%2Fcausallayer-mcp%0A%0A%2A%2AName%2A%2A%3A%20FaultKey%20%C2%B7%20CausalLayer%0A%2A%2ATagline%2A%2A%3A%20Deterministic%20AI-liability%20attribution%3A%20signed%2C%20Bitcoin-anchored%20vendor%2Fdeployer%2Fuser%20fault%20split.%0A%2A%2ADescription%2A%2A%3A%20Every%20AI%20incident%20%E2%86%92%20a%20signed%2C%20Bitcoin-anchored%20CausalCertificateV1%20receipt%20with%20a%20vendor%2Fdeployer%2Fuser%20fault%20split.%20Closed-form%20scoring%20%28Ed25519%20%2B%20Merkle%20%2B%20OpenTimestamps%29%2C%20byte-identical%20reproducibility%2C%20no%20LLMs%20in%20the%20scoring%20path.%20Built%20for%20AI-insurance%20underwriting%2C%20APRA%20CPS%20230%2C%20EU%20AI%20Act%20Article%2012%20logging%2C%20ISO%2FIEC%2042001%2C%20and%20the%20NIST%20AI%20RMF.%0A%0A%7C%20Field%20%7C%20Value%20%7C%0A%7C---%7C---%7C%0A%7C%20Homepage%20%7C%20https%3A%2F%2Ffaultkey.com%20%7C%0A%7C%20Repo%20%7C%20https%3A%2F%2Fgithub.com%2Fsmq9sn5jck-coder%2Fcausallayer-mcp%20%7C%0A%7C%20MCP%20endpoint%20%7C%20%60https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fmcp%60%20%7C%0A%7C%20Transport%20%7C%20streamable-http%20%28remote%2C%20no%20install%29%20%7C%0A%7C%20License%20%7C%20Apache-2.0%20%7C%0A%7C%20Official%20MCP%20Registry%20%7C%20io.github.smq9sn5jck-cloud%2Fcausallayer-mcp%20%7C%0A%7C%20Categories%20%7C%20ai-governance%2C%20compliance%2C%20security%2C%20audit%2C%20regtech%20%7C%0A%7C%20Cost%20%7C%20Free%20demo%20%7C%0A%0A%23%23%23%20Tools%0A-%20%60submit_incident%60%20%E2%80%94%20submit%20AI%20incident%2C%20return%20signed%20CausalCertificateV1%20with%20fault%20split%20%2850%20credits%29%0A-%20%60verify_certificate%60%20%E2%80%94%20verify%20signature%20%2B%20Merkle%20path%20%2B%20OpenTimestamps%20anchor%20%281%20credit%29%0A-%20%60get_anchor_status%60%20%E2%80%94%20latest%20Bitcoin%20anchor%20batch%20status%20%28free%29%0A-%20%60query_issuer_registry%60%20%E2%80%94%20public%20Ed25519%20issuer%20key%20lookup%20%28free%29%0A%0A%23%23%23%20Try%20it%20%28one%20line%29%0A%60%60%60bash%0Acurl%20-sS%20https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fhealthz%0A%60%60%60%0A%0AAlready%20published%20to%20the%20official%20MCP%20Registry%3A%20%3Chttps%3A%2F%2Fregistry.modelcontextprotocol.io%2Fv0%2Fservers%3Fsearch%3Dcausallayer%3E%0A) |
+| **MCP Hunt** | Open submission form<br/><sub>Paste: name=FaultKey · CausalLayer; tagline=Deterministic AI-liability attribution: signed, Bitcoin-anchored vendor/deployer/user fault split.; url=https://faultkey.com; mcp=https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp</sub> | [Open](https://mcphunt.com/submit) |
 
-### GitHub awesome-list pull requests
+## Tier 3 — Awesome-List PRs (one-tap GitHub PR)
 
-| List | Owner | PR-ready URL |
-| --- | --- | --- |
-| awesome-mcp-servers | `punkpeye` | <https://github.com/smq9sn5jck-coder/awesome-mcp-servers/pull/new/add-causallayer-faultkey> |
-| awesome-mcp-servers | `wong2` | <https://github.com/smq9sn5jck-coder/awesome-mcp-servers-1/pull/new/add-causallayer-faultkey> |
-| awesome-mcp-servers | `appcypher` | <https://github.com/smq9sn5jck-coder/awesome-mcp-servers-2/pull/new/add-causallayer-faultkey> |
-| awesome-remote-mcp-servers | `JAW9C` | <https://github.com/smq9sn5jck-coder/awesome-remote-mcp-servers/pull/new/add-causallayer-faultkey> |
+| Platform | Action | Link |
+|---|---|---|
+| **awesome-list: punkpeye/awesome-mcp-servers** | Open prefilled PR | [Open](https://github.com/punkpeye/awesome-mcp-servers/compare/main...smq9sn5jck-coder:awesome-mcp-servers:add-causallayer-faultkey?quick_pull=1&title=Add%20FaultKey%20%C2%B7%20CausalLayer%20%E2%80%94%20Deterministic%20AI-liability%20attribution%3A%20signed%2C%20Bitcoin-anchored%20vendor%2Fdeployer%2Fuser%20fault%20split.&body=%23%23%23%20About%0AEvery%20AI%20incident%20%E2%86%92%20a%20signed%2C%20Bitcoin-anchored%20CausalCertificateV1%20receipt%20with%20a%20vendor%2Fdeployer%2Fuser%20fault%20split.%20Closed-form%20scoring%20%28Ed25519%20%2B%20Merkle%20%2B%20OpenTimestamps%29%2C%20byte-identical%20reproducibility%2C%20no%20LLMs%20in%20the%20scoring%20path.%20Built%20for%20AI-insurance%20underwriting%2C%20APRA%20CPS%20230%2C%20EU%20AI%20Act%20Article%2012%20logging%2C%20ISO%2FIEC%2042001%2C%20and%20the%20NIST%20AI%20RMF.%0A%0A-%20Repo%3A%20https%3A%2F%2Fgithub.com%2Fsmq9sn5jck-coder%2Fcausallayer-mcp%0A-%20Homepage%3A%20https%3A%2F%2Ffaultkey.com%0A-%20MCP%20endpoint%3A%20%60https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fmcp%60%0A-%20Already%20in%20the%20official%20MCP%20Registry%3A%20%60io.github.smq9sn5jck-cloud%2Fcausallayer-mcp%60%0A-%20License%3A%20Apache-2.0%0A%0AAdding%20alphabetically%20in%20the%20appropriate%20category.%20Happy%20to%20adjust%20formatting%20if%20you%27d%20like%20a%20different%20placement.) |
+| **awesome-list: wong2/awesome-mcp-servers** | Open prefilled PR | [Open](https://github.com/wong2/awesome-mcp-servers/compare/main...smq9sn5jck-coder:awesome-mcp-servers-1:add-causallayer-faultkey?quick_pull=1&title=Add%20FaultKey%20%C2%B7%20CausalLayer%20%E2%80%94%20Deterministic%20AI-liability%20attribution%3A%20signed%2C%20Bitcoin-anchored%20vendor%2Fdeployer%2Fuser%20fault%20split.&body=%23%23%23%20About%0AEvery%20AI%20incident%20%E2%86%92%20a%20signed%2C%20Bitcoin-anchored%20CausalCertificateV1%20receipt%20with%20a%20vendor%2Fdeployer%2Fuser%20fault%20split.%20Closed-form%20scoring%20%28Ed25519%20%2B%20Merkle%20%2B%20OpenTimestamps%29%2C%20byte-identical%20reproducibility%2C%20no%20LLMs%20in%20the%20scoring%20path.%20Built%20for%20AI-insurance%20underwriting%2C%20APRA%20CPS%20230%2C%20EU%20AI%20Act%20Article%2012%20logging%2C%20ISO%2FIEC%2042001%2C%20and%20the%20NIST%20AI%20RMF.%0A%0A-%20Repo%3A%20https%3A%2F%2Fgithub.com%2Fsmq9sn5jck-coder%2Fcausallayer-mcp%0A-%20Homepage%3A%20https%3A%2F%2Ffaultkey.com%0A-%20MCP%20endpoint%3A%20%60https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fmcp%60%0A-%20Already%20in%20the%20official%20MCP%20Registry%3A%20%60io.github.smq9sn5jck-cloud%2Fcausallayer-mcp%60%0A-%20License%3A%20Apache-2.0%0A%0AAdding%20alphabetically%20in%20the%20appropriate%20category.%20Happy%20to%20adjust%20formatting%20if%20you%27d%20like%20a%20different%20placement.) |
+| **awesome-list: appcypher/awesome-mcp-servers** | Open prefilled PR | [Open](https://github.com/appcypher/awesome-mcp-servers/compare/main...smq9sn5jck-coder:awesome-mcp-servers-2:add-causallayer-faultkey?quick_pull=1&title=Add%20FaultKey%20%C2%B7%20CausalLayer%20%E2%80%94%20Deterministic%20AI-liability%20attribution%3A%20signed%2C%20Bitcoin-anchored%20vendor%2Fdeployer%2Fuser%20fault%20split.&body=%23%23%23%20About%0AEvery%20AI%20incident%20%E2%86%92%20a%20signed%2C%20Bitcoin-anchored%20CausalCertificateV1%20receipt%20with%20a%20vendor%2Fdeployer%2Fuser%20fault%20split.%20Closed-form%20scoring%20%28Ed25519%20%2B%20Merkle%20%2B%20OpenTimestamps%29%2C%20byte-identical%20reproducibility%2C%20no%20LLMs%20in%20the%20scoring%20path.%20Built%20for%20AI-insurance%20underwriting%2C%20APRA%20CPS%20230%2C%20EU%20AI%20Act%20Article%2012%20logging%2C%20ISO%2FIEC%2042001%2C%20and%20the%20NIST%20AI%20RMF.%0A%0A-%20Repo%3A%20https%3A%2F%2Fgithub.com%2Fsmq9sn5jck-coder%2Fcausallayer-mcp%0A-%20Homepage%3A%20https%3A%2F%2Ffaultkey.com%0A-%20MCP%20endpoint%3A%20%60https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fmcp%60%0A-%20Already%20in%20the%20official%20MCP%20Registry%3A%20%60io.github.smq9sn5jck-cloud%2Fcausallayer-mcp%60%0A-%20License%3A%20Apache-2.0%0A%0AAdding%20alphabetically%20in%20the%20appropriate%20category.%20Happy%20to%20adjust%20formatting%20if%20you%27d%20like%20a%20different%20placement.) |
+| **awesome-list: JAW9C/awesome-remote-mcp-servers** | Open prefilled PR | [Open](https://github.com/JAW9C/awesome-remote-mcp-servers/compare/main...smq9sn5jck-coder:awesome-remote-mcp-servers:add-causallayer-faultkey?quick_pull=1&title=Add%20FaultKey%20%C2%B7%20CausalLayer%20%E2%80%94%20Deterministic%20AI-liability%20attribution%3A%20signed%2C%20Bitcoin-anchored%20vendor%2Fdeployer%2Fuser%20fault%20split.&body=%23%23%23%20About%0AEvery%20AI%20incident%20%E2%86%92%20a%20signed%2C%20Bitcoin-anchored%20CausalCertificateV1%20receipt%20with%20a%20vendor%2Fdeployer%2Fuser%20fault%20split.%20Closed-form%20scoring%20%28Ed25519%20%2B%20Merkle%20%2B%20OpenTimestamps%29%2C%20byte-identical%20reproducibility%2C%20no%20LLMs%20in%20the%20scoring%20path.%20Built%20for%20AI-insurance%20underwriting%2C%20APRA%20CPS%20230%2C%20EU%20AI%20Act%20Article%2012%20logging%2C%20ISO%2FIEC%2042001%2C%20and%20the%20NIST%20AI%20RMF.%0A%0A-%20Repo%3A%20https%3A%2F%2Fgithub.com%2Fsmq9sn5jck-coder%2Fcausallayer-mcp%0A-%20Homepage%3A%20https%3A%2F%2Ffaultkey.com%0A-%20MCP%20endpoint%3A%20%60https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fmcp%60%0A-%20Already%20in%20the%20official%20MCP%20Registry%3A%20%60io.github.smq9sn5jck-cloud%2Fcausallayer-mcp%60%0A-%20License%3A%20Apache-2.0%0A%0AAdding%20alphabetically%20in%20the%20appropriate%20category.%20Happy%20to%20adjust%20formatting%20if%20you%27d%20like%20a%20different%20placement.) |
 
-### Cloudflare ecosystem
+## Tier 4 — Cloudflare ecosystem placement
 
-| Surface | Mechanism |
-| --- | --- |
-| Cloudflare Workers Showcase | Submit form on cloudflare.com/case-studies |
-| `built-with-cloudflare` directory | Forum / community thread |
-| Cloudflare Discord (`#showcase`) | Direct post |
-| Cloudflare Community forum | `community.cloudflare.com` thread (also indexed by Cloudflare's own search) |
+| Platform | Action | Link |
+|---|---|---|
+| **Cloudflare Built-with-Workers** | Open submission form<br/><sub>Apply via the form on the page; reference the live workers.dev URL and the Apache-2.0 GitHub repo.</sub> | [Open](https://www.cloudflare.com/products/workers/built-with-workers/) |
+| **Cloudflare Community forum (Workers showcase thread)** | Open forum thread editor<br/><sub>Post a 'Show & Tell: FaultKey/CausalLayer MCP — first deterministic AI-liability MCP on Cloudflare Workers'.</sub> | [Open](https://community.cloudflare.com/c/developers/workers/40) |
 
-### Package and code-search registries
+## Tier 5 — Anthropic / MCP communities
 
-| Registry | Status |
-| --- | --- |
-| npm (`causallayer-mcp` CLI) | Tarball ready; awaits `npm publish` |
-| JSR | Optional |
-| sourcegraph.com / `code.search` | Auto-indexes public GitHub |
-| greppy / GitHub code search | Auto-indexes public GitHub |
+| Platform | Action | Link |
+|---|---|---|
+| **Anthropic Discord (Show your build)** | Join community<br/><sub>Post in #show-your-mcp-server with the registry ID + workers.dev demo URL.</sub> | [Open](https://www.anthropic.com/discord) |
+| **MCP Discord (modelcontextprotocol)** | Join community<br/><sub>Find Discord invite link; post in #server-showcase.</sub> | [Open](https://modelcontextprotocol.io/community/communication) |
 
-### Search-engine signaling
+## Tier 6 — Social proof: HN, Reddit, X, LinkedIn, Threads, Bluesky, Mastodon
 
-| Surface | Mechanism |
-| --- | --- |
-| Bing IndexNow | `POST` to `https://api.indexnow.org/IndexNow` for `faultkey.com` URLs |
-| Yandex IndexNow | Same protocol, same ping |
-| Seznam (Czech) | Same protocol |
-| Sitemap (`/sitemap.xml`) | Pinged on every release |
-| GitHub Releases Atom feed | <https://github.com/smq9sn5jck-coder/causallayer-mcp/releases.atom> — automatically syndicates to RSS readers and AI crawlers |
+| Platform | Action | Link |
+|---|---|---|
+| **Hacker News (Show HN)** | Open prefilled post<br/><sub>Tap, then write the comment yourself (HN doesn't accept prefilled bodies, only title/url).</sub> | [Open](https://news.ycombinator.com/submitlink?u=https%3A%2F%2Ffaultkey.com&t=Show%20HN%3A%20FaultKey%20%C2%B7%20CausalLayer%20%E2%80%94%20deterministic%20AI-liability%20attribution%20%28signed%20receipts%2C%20no%20LLMs%29) |
+| **Reddit r/mcp** | Open prefilled post | [Open](https://www.reddit.com/r/mcp/submit?title=FaultKey%20%C2%B7%20CausalLayer%20%E2%80%94%20deterministic%20AI-liability%20MCP%20server%20%28signed%2C%20Bitcoin-anchored%20receipts%3B%20live%20demo%29&selftext=true&text=%2A%2ALive%20demo%20%28no%20install%29%3A%20https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fmcp%2A%2A%0A%0AI%20built%20a%20deterministic%20AI-liability%20MCP%20server.%20Every%20incident%20%E2%86%92%20a%20signed%2C%20Bitcoin-anchored%20CausalCertificateV1%20receipt%20with%20a%20vendor%2Fdeployer%2Fuser%20fault%20split.%20Closed-form%20scoring%20%28Ed25519%20%2B%20Merkle%20%2B%20OpenTimestamps%29%2C%20byte-identical%20reproducibility%2C%20no%20LLMs%20in%20the%20scoring%20path.%0A%0ASource%20%28Apache-2.0%29%3A%20https%3A%2F%2Fgithub.com%2Fsmq9sn5jck-coder%2Fcausallayer-mcp%0AOfficial%20MCP%20Registry%3A%20io.github.smq9sn5jck-cloud%2Fcausallayer-mcp%0AHomepage%3A%20https%3A%2F%2Ffaultkey.com%0A%0ABuilt%20on%20Cloudflare%20Workers%2C%20Streamable%20HTTP%20transport%2C%20free%20demo%20%2850%2F1%2F0%2F0%20credits%20per%20tool%29.%20Looking%20for%20feedback%20from%20anyone%20working%20on%20AI%20insurance%2C%20APRA%20CPS%20230%2C%20EU%20AI%20Act%2C%20ISO%2FIEC%2042001%2C%20or%20NIST%20AI%20RMF.%0A%0ATry%20the%20handshake%20yourself%3A%0A%60%60%60%0Acurl%20-sS%20https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fhealthz%0A%60%60%60) |
+| **Reddit r/LocalLLaMA** | Open prefilled post | [Open](https://www.reddit.com/r/LocalLLaMA/submit?title=FaultKey%20%C2%B7%20CausalLayer%20%E2%80%94%20deterministic%20AI-liability%20MCP%20server%20%28signed%2C%20Bitcoin-anchored%20receipts%3B%20live%20demo%29&selftext=true&text=%2A%2ALive%20demo%20%28no%20install%29%3A%20https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fmcp%2A%2A%0A%0AI%20built%20a%20deterministic%20AI-liability%20MCP%20server.%20Every%20incident%20%E2%86%92%20a%20signed%2C%20Bitcoin-anchored%20CausalCertificateV1%20receipt%20with%20a%20vendor%2Fdeployer%2Fuser%20fault%20split.%20Closed-form%20scoring%20%28Ed25519%20%2B%20Merkle%20%2B%20OpenTimestamps%29%2C%20byte-identical%20reproducibility%2C%20no%20LLMs%20in%20the%20scoring%20path.%0A%0ASource%20%28Apache-2.0%29%3A%20https%3A%2F%2Fgithub.com%2Fsmq9sn5jck-coder%2Fcausallayer-mcp%0AOfficial%20MCP%20Registry%3A%20io.github.smq9sn5jck-cloud%2Fcausallayer-mcp%0AHomepage%3A%20https%3A%2F%2Ffaultkey.com%0A%0ABuilt%20on%20Cloudflare%20Workers%2C%20Streamable%20HTTP%20transport%2C%20free%20demo%20%2850%2F1%2F0%2F0%20credits%20per%20tool%29.%20Looking%20for%20feedback%20from%20anyone%20working%20on%20AI%20insurance%2C%20APRA%20CPS%20230%2C%20EU%20AI%20Act%2C%20ISO%2FIEC%2042001%2C%20or%20NIST%20AI%20RMF.%0A%0ATry%20the%20handshake%20yourself%3A%0A%60%60%60%0Acurl%20-sS%20https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fhealthz%0A%60%60%60) |
+| **Reddit r/ClaudeAI** | Open prefilled post | [Open](https://www.reddit.com/r/ClaudeAI/submit?title=FaultKey%20%C2%B7%20CausalLayer%20%E2%80%94%20deterministic%20AI-liability%20MCP%20server%20%28signed%2C%20Bitcoin-anchored%20receipts%3B%20live%20demo%29&selftext=true&text=%2A%2ALive%20demo%20%28no%20install%29%3A%20https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fmcp%2A%2A%0A%0AI%20built%20a%20deterministic%20AI-liability%20MCP%20server.%20Every%20incident%20%E2%86%92%20a%20signed%2C%20Bitcoin-anchored%20CausalCertificateV1%20receipt%20with%20a%20vendor%2Fdeployer%2Fuser%20fault%20split.%20Closed-form%20scoring%20%28Ed25519%20%2B%20Merkle%20%2B%20OpenTimestamps%29%2C%20byte-identical%20reproducibility%2C%20no%20LLMs%20in%20the%20scoring%20path.%0A%0ASource%20%28Apache-2.0%29%3A%20https%3A%2F%2Fgithub.com%2Fsmq9sn5jck-coder%2Fcausallayer-mcp%0AOfficial%20MCP%20Registry%3A%20io.github.smq9sn5jck-cloud%2Fcausallayer-mcp%0AHomepage%3A%20https%3A%2F%2Ffaultkey.com%0A%0ABuilt%20on%20Cloudflare%20Workers%2C%20Streamable%20HTTP%20transport%2C%20free%20demo%20%2850%2F1%2F0%2F0%20credits%20per%20tool%29.%20Looking%20for%20feedback%20from%20anyone%20working%20on%20AI%20insurance%2C%20APRA%20CPS%20230%2C%20EU%20AI%20Act%2C%20ISO%2FIEC%2042001%2C%20or%20NIST%20AI%20RMF.%0A%0ATry%20the%20handshake%20yourself%3A%0A%60%60%60%0Acurl%20-sS%20https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fhealthz%0A%60%60%60) |
+| **Reddit r/AI_Agents** | Open prefilled post | [Open](https://www.reddit.com/r/AI_Agents/submit?title=FaultKey%20%C2%B7%20CausalLayer%20%E2%80%94%20deterministic%20AI-liability%20MCP%20server%20%28signed%2C%20Bitcoin-anchored%20receipts%3B%20live%20demo%29&selftext=true&text=%2A%2ALive%20demo%20%28no%20install%29%3A%20https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fmcp%2A%2A%0A%0AI%20built%20a%20deterministic%20AI-liability%20MCP%20server.%20Every%20incident%20%E2%86%92%20a%20signed%2C%20Bitcoin-anchored%20CausalCertificateV1%20receipt%20with%20a%20vendor%2Fdeployer%2Fuser%20fault%20split.%20Closed-form%20scoring%20%28Ed25519%20%2B%20Merkle%20%2B%20OpenTimestamps%29%2C%20byte-identical%20reproducibility%2C%20no%20LLMs%20in%20the%20scoring%20path.%0A%0ASource%20%28Apache-2.0%29%3A%20https%3A%2F%2Fgithub.com%2Fsmq9sn5jck-coder%2Fcausallayer-mcp%0AOfficial%20MCP%20Registry%3A%20io.github.smq9sn5jck-cloud%2Fcausallayer-mcp%0AHomepage%3A%20https%3A%2F%2Ffaultkey.com%0A%0ABuilt%20on%20Cloudflare%20Workers%2C%20Streamable%20HTTP%20transport%2C%20free%20demo%20%2850%2F1%2F0%2F0%20credits%20per%20tool%29.%20Looking%20for%20feedback%20from%20anyone%20working%20on%20AI%20insurance%2C%20APRA%20CPS%20230%2C%20EU%20AI%20Act%2C%20ISO%2FIEC%2042001%2C%20or%20NIST%20AI%20RMF.%0A%0ATry%20the%20handshake%20yourself%3A%0A%60%60%60%0Acurl%20-sS%20https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fhealthz%0A%60%60%60) |
+| **X / Twitter (prefilled tweet)** | Open prefilled post | [Open](https://twitter.com/intent/tweet?text=Just%20shipped%3A%20deterministic%20AI-liability%20attribution%20for%20Anthropic%27s%20MCP.%0A%0AEvery%20AI%20incident%20%E2%86%92%20signed%2C%20Bitcoin-anchored%20receipt%20with%20vendor%2Fdeployer%2Fuser%20fault%20split.%0ANo%20LLMs%20in%20the%20scoring%20path.%20Byte-identical%20reproducible.%0A%0ALive%20demo%3A%20https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fmcp%0ASource%3A%20https%3A%2F%2Fgithub.com%2Fsmq9sn5jck-coder%2Fcausallayer-mcp) |
+| **LinkedIn (prefilled share)** | Open prefilled post<br/><sub>Then paste this into the comment box: Just shipped: deterministic AI-liability attribution for Anthropic's MCP.  Every AI incident → signed, Bitcoin-anchored receipt with vendor/deployer/user fault split. No LLMs in the scoring path. Byte-identical reproducible.  Live demo: https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp Source: https://github.com/smq9sn5jck-coder/causallayer-mcp</sub> | [Open](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Ffaultkey.com) |
+| **Threads (prefilled)** | Open prefilled post | [Open](https://www.threads.net/intent/post?text=Just%20shipped%3A%20deterministic%20AI-liability%20attribution%20for%20Anthropic%27s%20MCP.%0A%0AEvery%20AI%20incident%20%E2%86%92%20signed%2C%20Bitcoin-anchored%20receipt%20with%20vendor%2Fdeployer%2Fuser%20fault%20split.%0ANo%20LLMs%20in%20the%20scoring%20path.%20Byte-identical%20reproducible.%0A%0ALive%20demo%3A%20https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fmcp%0ASource%3A%20https%3A%2F%2Fgithub.com%2Fsmq9sn5jck-coder%2Fcausallayer-mcp) |
+| **Bluesky (prefilled)** | Open prefilled post | [Open](https://bsky.app/intent/compose?text=Just%20shipped%3A%20deterministic%20AI-liability%20attribution%20for%20Anthropic%27s%20MCP.%0A%0AEvery%20AI%20incident%20%E2%86%92%20signed%2C%20Bitcoin-anchored%20receipt%20with%20vendor%2Fdeployer%2Fuser%20fault%20split.%0ANo%20LLMs%20in%20the%20scoring%20path.%20Byte-identical%20reproducible.%0A%0ALive%20demo%3A%20https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fmcp%0ASource%3A%20https%3A%2F%2Fgithub.com%2Fsmq9sn5jck-coder%2Fcausallayer-mcp) |
+| **Mastodon (mastodon.social)** | Open prefilled post | [Open](https://mastodon.social/share?text=Just%20shipped%3A%20deterministic%20AI-liability%20attribution%20for%20Anthropic%27s%20MCP.%0A%0AEvery%20AI%20incident%20%E2%86%92%20signed%2C%20Bitcoin-anchored%20receipt%20with%20vendor%2Fdeployer%2Fuser%20fault%20split.%0ANo%20LLMs%20in%20the%20scoring%20path.%20Byte-identical%20reproducible.%0A%0ALive%20demo%3A%20https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fmcp%0ASource%3A%20https%3A%2F%2Fgithub.com%2Fsmq9sn5jck-coder%2Fcausallayer-mcp) |
+| **Mastodon (fosstodon — best for OSS launch)** | Open prefilled post | [Open](https://fosstodon.org/share?text=Just%20shipped%3A%20deterministic%20AI-liability%20attribution%20for%20Anthropic%27s%20MCP.%0A%0AEvery%20AI%20incident%20%E2%86%92%20signed%2C%20Bitcoin-anchored%20receipt%20with%20vendor%2Fdeployer%2Fuser%20fault%20split.%0ANo%20LLMs%20in%20the%20scoring%20path.%20Byte-identical%20reproducible.%0A%0ALive%20demo%3A%20https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fmcp%0ASource%3A%20https%3A%2F%2Fgithub.com%2Fsmq9sn5jck-coder%2Fcausallayer-mcp) |
 
-### Developer-feed surfaces
+## Tier 7 — Dev-blog syndication
 
-| Surface | Mechanism |
-| --- | --- |
-| GitHub Trending (`mcp` topic) | Earned through stars/forks |
-| Hacker News (Show HN) | One-off, launch-day |
-| `r/LocalLLaMA`, `r/ClaudeAI`, `r/mcp` | One-off, launch-day |
-| Lobsters | Invite-only |
-| Indie Hackers | Account-required |
-| Dev.to / Hashnode / Medium | Cross-post technical write-up |
-| Substack: `Bens Bites`, `The Rundown AI`, `TLDR` | Direct outreach |
+| Platform | Action | Link |
+|---|---|---|
+| **dev.to (new post)** | Open prefilled post | [Open](https://dev.to/new?prefill_body=%23%20FaultKey%20%C2%B7%20CausalLayer%20%E2%80%94%20deterministic%20AI-liability%20attribution%0A%0AEvery%20AI%20incident%20%E2%86%92%20a%20signed%2C%20Bitcoin-anchored%20CausalCertificateV1%20receipt%20with%20a%20vendor%2Fdeployer%2Fuser%20fault%20split.%20Closed-form%20scoring%20%28Ed25519%20%2B%20Merkle%20%2B%20OpenTimestamps%29%2C%20byte-identical%20reproducibility%2C%20no%20LLMs%20in%20the%20scoring%20path.%20Built%20for%20AI-insurance%20underwriting%2C%20APRA%20CPS%20230%2C%20EU%20AI%20Act%20Article%2012%20logging%2C%20ISO%2FIEC%2042001%2C%20and%20the%20NIST%20AI%20RMF.%0A%0A-%20%2A%2ALive%20MCP%20endpoint%2A%2A%3A%20%60https%3A%2F%2Fcausallayer-mcp-demo.zykm9qkk7j.workers.dev%2Fmcp%60%0A-%20%2A%2AHomepage%2A%2A%3A%20https%3A%2F%2Ffaultkey.com%0A-%20%2A%2ASource%20%28Apache-2.0%29%2A%2A%3A%20https%3A%2F%2Fgithub.com%2Fsmq9sn5jck-coder%2Fcausallayer-mcp%0A-%20%2A%2AOfficial%20MCP%20Registry%2A%2A%3A%20%60io.github.smq9sn5jck-cloud%2Fcausallayer-mcp%60%0A) |
+| **Hashnode (new draft)** | Open prefilled post<br/><sub>Paste content from LAUNCH.md; auto-publishes to your personal blog and to Hashnode network.</sub> | [Open](https://hashnode.com/draft) |
 
-## Launch checklist (live)
+## Tier 8 — Maker communities (manual)
 
-The execution status is tracked alongside `todo.md` in this repo and updated as items move from `pending` to `submitted` to `live`.
+| Platform | Action | Link |
+|---|---|---|
+| **Indie Hackers (Show IH)** | Open prefilled post<br/><sub>Use the LAUNCH.md content as the post body.</sub> | [Open](https://www.indiehackers.com/post/new) |
+| **BetaList** | Open submission form<br/><sub>Tagline: Deterministic AI-liability attribution: signed, Bitcoin-anchored vendor/deployer/user fault split.; URL: https://faultkey.com</sub> | [Open](https://betalist.com/submit) |
+| **Product Hunt (draft)** | Open submission form<br/><sub>PH requires posting from an account with karma; ask a hunter for assistance, or post organically when you have any account history.</sub> | [Open](https://www.producthunt.com/posts/new) |
+
+## Tier 9 — Search-engine signaling (no Google dependency)
+
+| Platform | Action | Link |
+|---|---|---|
+| **Bing Webmaster Tools (sitemap submission)** | Open submission form<br/><sub>Add https://faultkey.com as a property → submit sitemap: https://faultkey.com/sitemap.xml</sub> | [Open](https://www.bing.com/webmasters/home) |
+| **IndexNow (instant Bing+Yandex+Seznam indexing)** | Run script (auto)<br/><sub>We auto-ping IndexNow once the page is published. Once faultkey.com is live, run the IndexNow.sh in /home/ubuntu/work/causallayer-mcp/scripts/.</sub> | [Open](https://www.indexnow.org/) |
+| **DuckDuckGo (auto via Bing)** | Auto-discovers (no action)<br/><sub>DuckDuckGo uses Bing's index; submitting to Bing covers DDG.</sub> | [Open](https://duckduckgo.com/) |
+| **Yandex Webmaster** | Open submission form<br/><sub>Verify via meta tag we already injected.</sub> | [Open](https://webmaster.yandex.com/sites/add/) |
+
+---
+
+## Canonical card (paste anywhere)
+
+```
+FaultKey · CausalLayer
+Deterministic AI-liability attribution: signed, Bitcoin-anchored vendor/deployer/user fault split.
+
+Live demo:    https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp
+Homepage:     https://faultkey.com
+Source:       https://github.com/smq9sn5jck-coder/causallayer-mcp  (Apache-2.0)
+MCP Registry: io.github.smq9sn5jck-cloud/causallayer-mcp
+Transport:    streamable-http (remote, no install)
+Tools:        submit_incident, verify_certificate, get_anchor_status, query_issuer_registry
+Compliance:   APRA CPS 230, EU AI Act Art. 12, ISO/IEC 42001, NIST AI RMF
+```
+
+## One-line install (Claude Desktop / Cursor)
+
+```json
+{
+  "mcpServers": {
+    "causallayer": {
+      "url": "https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp"
+    }
+  }
+}
+```
+
+## Verify it works (one curl)
+
+```bash
+curl -sS https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/healthz
+```
