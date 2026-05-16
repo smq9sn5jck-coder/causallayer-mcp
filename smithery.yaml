@@ -1,0 +1,47 @@
+# Smithery deploy/import descriptor — https://smithery.ai/docs
+# This is a remote MCP server (not deployed via Smithery's runtime) — we point at our existing Cloudflare Worker.
+runtime: "remote"
+remote:
+  url: "https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp"
+  transport: "streamable-http"
+
+metadata:
+  name: "FaultKey · CausalLayer"
+  description: "Deterministic AI-liability attribution. Issues signed, Bitcoin-anchored CausalCertificateV1 receipts with vendor/deployer/user fault splits for AI incidents. Closed-form scoring, byte-identical reproducibility, no LLMs in the scoring path."
+  homepage: "https://faultkey.com"
+  repository: "https://github.com/smq9sn5jck-coder/causallayer-mcp"
+  license: "Apache-2.0"
+  categories:
+    - "ai-governance"
+    - "compliance"
+    - "security"
+    - "audit"
+    - "regtech"
+  keywords:
+    - "mcp"
+    - "ai-liability"
+    - "ai-governance"
+    - "ai-incident"
+    - "merkle-tree"
+    - "ed25519"
+    - "opentimestamps"
+    - "bitcoin-anchor"
+    - "apra"
+    - "eu-ai-act"
+    - "iso-42001"
+    - "nist-ai-rmf"
+    - "causal-attribution"
+
+tools:
+  - name: "submit_incident"
+    description: "Submit an AI incident and receive a signed CausalCertificateV1 with vendor/deployer/user fault split."
+    cost_credits: 50
+  - name: "verify_certificate"
+    description: "Verify any CausalCertificateV1 (Ed25519 signature + Merkle audit path + OpenTimestamps anchor)."
+    cost_credits: 1
+  - name: "get_anchor_status"
+    description: "Get the latest Bitcoin OpenTimestamps anchor batch status."
+    cost_credits: 0
+  - name: "query_issuer_registry"
+    description: "Query the public issuer registry for the active Ed25519 public key of an issuer."
+    cost_credits: 0
