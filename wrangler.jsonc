@@ -1,0 +1,159 @@
+/**
+ * CausalLayer MCP — Cloudflare Workers configuration.
+ *
+ * The McpAgent class persists per-session state in a Durable Object, so we
+ * declare a SQLite-backed DO class and bind it as MCP_OBJECT. Each MCP client
+ * session gets its own DO instance.
+ *
+ * Billing (BILLING_MODE=stripe) requires:
+ *   1. A KV namespace bound as LEDGER (run: wrangler kv:namespace create LEDGER)
+ *      and paste the returned id into the kv_namespaces section below.
+ *   2. Secrets:
+ *        wrangler secret put STRIPE_SECRET_KEY            --env <env>
+ *        wrangler secret put STRIPE_WEBHOOK_SECRET        --env <env>
+ *        wrangler secret put STRIPE_PRICE_STARTER         --env <env>
+ *        wrangler secret put STRIPE_PRICE_GROWTH          --env <env>
+ *        wrangler secret put STRIPE_PRICE_ENTERPRISE      --env <env>
+ *        wrangler secret put ADMIN_TOKEN                  --env <env>
+ *        wrangler secret put CAUSALLAYER_API_KEY          --env <env>
+ *
+ * Three deploy targets:
+ *   default     — `wrangler dev`, BILLING_MODE=free for local engine work
+ *   sandbox     — workers.dev, BILLING_MODE=stripe with Stripe TEST keys
+ *   production  — custom domain, BILLING_MODE=stripe with Stripe LIVE keys,
+ *                 only "active" issuers accepted
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "causallayer-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+
+  // Stub unused x402 deps so the bundler succeeds when BILLING_MODE != 'x402'.
+  // Install @x402/core and @x402/evm and remove these aliases to enable x402.
+  "alias": {
+    "@x402/core/server": "./src/_x402-stub.ts",
+    "@x402/core/client": "./src/_x402-stub.ts",
+    "@x402/evm/exact/server": "./src/_x402-stub.ts",
+    "@x402/evm/exact/client": "./src/_x402-stub.ts"
+  },
+
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["CausalLayerMCP"]
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "class_name": "CausalLayerMCP",
+        "name": "MCP_OBJECT"
+      }
+    ]
+  },
+  "observability": { "enabled": true },
+
+  // KV namespace for the credit ledger. Replace the id values after running
+  // `wrangler kv:namespace create LEDGER` (and the --env <name> variants).
+  "kv_namespaces": [
+    {
+      "binding": "LEDGER",
+      "id": "e2323ffd683b4242a835e26a8f01d693"
+    }
+  ],
+
+  "vars": {
+    "CAUSALLAYER_API_BASE": "http://127.0.0.1:3000",
+    "CAUSALLAYER_ENV": "dev",
+    "ALLOWED_ISSUER_STATUSES": "active,advisory",
+    "BILLING_MODE": "free",
+    "PRICE_SUBMIT_INCIDENT": "50",
+    "PRICE_VERIFY_CERTIFICATE": "1",
+    "PRICE_GET_ANCHOR_STATUS": "0",
+    "PRICE_QUERY_ISSUER_REGISTRY": "0"
+  },
+
+  "env": {
+    "demo": {
+      "name": "causallayer-mcp-demo",
+      "workers_dev": true,
+      "routes": [
+        { "pattern": "mcp.faultkey.com/*", "zone_name": "faultkey.com" }
+      ],
+      "migrations": [
+        { "tag": "v1", "new_sqlite_classes": ["CausalLayerMCP"] }
+      ],
+      "durable_objects": {
+        "bindings": [
+          { "class_name": "CausalLayerMCP", "name": "MCP_OBJECT" }
+        ]
+      },
+      "observability": { "enabled": true },
+      "kv_namespaces": [
+        {
+          "binding": "LEDGER",
+          "id": "756cd4a6850a4e9e80837ae764d15ef7"
+        }
+      ],
+      "vars": {
+        // Standalone demo: no upstream call, watermarked deterministic output.
+        // Flip to false and set CAUSALLAYER_API_BASE once the Fly upstream is wired.
+        "STANDALONE_DEMO": "true",
+        "CAUSALLAYER_API_BASE": "https://causallayer-api.fly.dev",
+        "CAUSALLAYER_ENV": "demo",
+        "ALLOWED_ISSUER_STATUSES": "active,advisory",
+        "BILLING_MODE": "demo",
+        "PRICE_SUBMIT_INCIDENT": "50",
+        "PRICE_VERIFY_CERTIFICATE": "1",
+        "PRICE_GET_ANCHOR_STATUS": "0",
+        "PRICE_QUERY_ISSUER_REGISTRY": "0"
+      }
+    },
+    "sandbox": {
+      "name": "causallayer-mcp-sandbox",
+      "workers_dev": true,
+      "kv_namespaces": [
+        {
+          "binding": "LEDGER",
+          "id": "REPLACE_WITH_SANDBOX_LEDGER_KV_ID"
+        }
+      ],
+      "vars": {
+        "CAUSALLAYER_API_BASE": "https://api-sandbox.causallayer.example",
+        "CAUSALLAYER_ENV": "sandbox",
+        "ALLOWED_ISSUER_STATUSES": "active,advisory",
+        "BILLING_MODE": "stripe",
+        "PRICE_SUBMIT_INCIDENT": "50",
+        "PRICE_VERIFY_CERTIFICATE": "1",
+        "PRICE_GET_ANCHOR_STATUS": "0",
+        "PRICE_QUERY_ISSUER_REGISTRY": "0"
+      }
+    },
+    "production": {
+      "name": "causallayer-mcp",
+      "workers_dev": false,
+      "routes": [
+        { "pattern": "mcp.causallayer.io/*", "custom_domain": true }
+      ],
+      "kv_namespaces": [
+        {
+          "binding": "LEDGER",
+          "id": "REPLACE_WITH_PRODUCTION_LEDGER_KV_ID"
+        }
+      ],
+      "vars": {
+        "CAUSALLAYER_API_BASE": "https://api.causallayer.io",
+        "CAUSALLAYER_ENV": "production",
+        "ALLOWED_ISSUER_STATUSES": "active",
+        "BILLING_MODE": "stripe",
+        "PRICE_SUBMIT_INCIDENT": "50",
+        "PRICE_VERIFY_CERTIFICATE": "1",
+        "PRICE_GET_ANCHOR_STATUS": "0",
+        "PRICE_QUERY_ISSUER_REGISTRY": "0"
+      }
+    }
+  }
+}

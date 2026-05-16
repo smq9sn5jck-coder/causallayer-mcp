@@ -1,0 +1,39 @@
+{
+  "name": "causallayer-mcp",
+  "version": "0.2.0",
+  "description": "One-line MCP client for the CausalLayer deterministic AI-liability attribution engine. Spawns mcp-remote against the public demo (or your paid tenant) for Claude Desktop, Cursor, Cline, Continue.",
+  "license": "Apache-2.0",
+  "author": "CausalLayer",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/causallayer/causallayer-mcp.git"
+  },
+  "homepage": "https://causallayer.io",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai-governance",
+    "ai-liability",
+    "model-risk-management",
+    "eu-ai-act",
+    "apra-cps-230",
+    "claude-desktop",
+    "cursor",
+    "cline"
+  ],
+  "type": "module",
+  "bin": {
+    "causallayer-mcp": "./bin/causallayer-mcp.mjs"
+  },
+  "files": [
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "mcp-remote": "^0.1.10"
+  }
+}

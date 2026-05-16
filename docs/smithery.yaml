@@ -1,0 +1,7 @@
+startCommand:
+  type: stdio
+  command: npx
+  args:
+    - -y
+    - "@modelcontextprotocol/inspector"
+    - "https://mcp.causallayer.io/mcp"

@@ -1,0 +1,15 @@
+{
+  "identifier": "causallayer",
+  "meta": {
+    "title": "CausalLayer",
+    "description": "Deterministic AI liability apportionment and verifiable audit trails.",
+    "tags": ["ai-governance", "liability", "audit", "compliance", "security"],
+    "avatar": "https://raw.githubusercontent.com/smq9sn5jck-coder/causallayer-mcp/main/docs/avatar.png"
+  },
+  "author": "CausalLayer",
+  "homepage": "https://github.com/smq9sn5jck-coder/causallayer-mcp",
+  "mcp": {
+    "type": "sse",
+    "url": "https://mcp.causallayer.io/mcp"
+  }
+}
