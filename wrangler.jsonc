@@ -66,10 +66,15 @@
   ],
 
   "vars": {
+    // Standalone demo: no upstream call, watermarked deterministic output.
+    // The default-env worker hosts mcp.faultkey.com (public demo endpoint), so it
+    // must be self-contained until the upstream engine is wired in. Set to "false"
+    // (and configure CAUSALLAYER_API_KEY secret) to delegate scoring to upstream.
+    "STANDALONE_DEMO": "true",
     "CAUSALLAYER_API_BASE": "http://127.0.0.1:3000",
-    "CAUSALLAYER_ENV": "dev",
+    "CAUSALLAYER_ENV": "demo",
     "ALLOWED_ISSUER_STATUSES": "active,advisory",
-    "BILLING_MODE": "free",
+    "BILLING_MODE": "demo",
     "PRICE_SUBMIT_INCIDENT": "50",
     "PRICE_VERIFY_CERTIFICATE": "1",
     "PRICE_GET_ANCHOR_STATUS": "0",

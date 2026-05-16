@@ -128,15 +128,23 @@ export async function enforceDemoLimit(
   const ip = meta.ip_bucket;
   const day = isoDay();
 
-  // (1) Burst limit per (IP, tool): KV PUT with TTL, treat existence as "too soon"
+  // (1) Burst limit per (IP, tool). KV minimum TTL is 60s, but our burst
+  // window is 5s — so we store the timestamp inside the value and check
+  // elapsed time on read. KV record self-expires after 60s.
   const burstKey = `demo:burst:${ip}:${tool}`;
-  const burst = await env.LEDGER.get(burstKey);
-  if (burst) {
-    return {
-      allow: false,
-      reason: "burst",
-      retry_after_seconds: BURST_WINDOW_SECONDS,
-    };
+  const burstRaw = await env.LEDGER.get(burstKey);
+  if (burstRaw) {
+    const lastTs = Number.parseInt(burstRaw, 10);
+    if (
+      Number.isFinite(lastTs) &&
+      Date.now() - lastTs < BURST_WINDOW_SECONDS * 1000
+    ) {
+      return {
+        allow: false,
+        reason: "burst",
+        retry_after_seconds: BURST_WINDOW_SECONDS,
+      };
+    }
   }
 
   // (2) Daily per-IP for paid tools
@@ -183,9 +191,10 @@ export async function commitDemoUsage(
   const ip = meta.ip_bucket;
   const day = isoDay();
 
-  // Set burst marker (5s TTL)
-  await env.LEDGER.put(`demo:burst:${ip}:${tool}`, "1", {
-    expirationTtl: BURST_WINDOW_SECONDS,
+  // Set burst marker. KV requires expirationTtl >= 60, so we use the minimum
+  // and rely on the timestamp-in-value check on read for the actual 5s window.
+  await env.LEDGER.put(`demo:burst:${ip}:${tool}`, String(Date.now()), {
+    expirationTtl: 60,
   });
 
   // Increment per-IP daily counter (TTL = 36h to cover timezone slop)

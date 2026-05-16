@@ -55,3 +55,36 @@
 - [x] LAUNCH.md v1 with 30 prefilled submission URLs
 - [x] smithery.yaml in repo root
 - [x] llms.txt + ai.txt + robots.txt in landing page public dir
+
+
+## Phase 8 — Next steps queue (post mcp.faultkey.com bind, ranked by ROI)
+- [ ] User: 4× workflow file paste (CI, CodeQL, Scorecard, dependabot.yml) — ~90s
+- [ ] User: Apex DNS bind (faultkey.com → faultkey-pages) in Cloudflare dash — ~30s
+- [ ] User: 3× awesome-list PR taps (punkpeye/wong2/appcypher) — ~60s
+- [ ] User: Glama submission tap — unblocks punkpeye PR review — ~120s
+- [ ] User: Cline marketplace issue submit — exposes to ~5M Cline users — ~60s
+- [ ] User: 5 cold-outreach emails (APRA/insurer/regtech leads) — highest revenue ROI — ~30 min
+- [ ] User: Show HN fire at peak window (Wed 8am US ET = Thu 1am Brisbane) — ~5 min
+- [ ] User: Reddit + X + LinkedIn + dev.to staggered cascade — ~20 min
+- [ ] Auto: npm publish CLI — needs npm 2FA token from user
+- [ ] Auto: After Glama listing live, push badge update to PR
+
+
+## Phase 9 — C5 build + visibility audit + Cloudflare maximisation
+- [ ] Build interactive /try page on faultkey.pages.dev
+- [ ] Form submits to https://mcp.faultkey.com/mcp via JSON-RPC
+- [ ] Display the returned signed certificate inline (verifiable)
+- [ ] Add /verify page that lets visitors paste a cert and re-verify it
+- [ ] Build "embed widget" snippet visitors can drop into their own pages
+- [ ] Audit visibility: list every surface NOT yet hit
+- [ ] Cloudflare: enable Web Analytics on Pages
+- [ ] Cloudflare: enable Email Routing (hello@faultkey.com → real inbox)
+- [ ] Cloudflare: enable Turnstile to protect /try form
+- [ ] Cloudflare: add Snippet for security headers (CSP, HSTS, X-Frame, etc.)
+- [ ] Cloudflare: add Cache Rules for static assets
+- [ ] Cloudflare: add Rate Limiting Rule on /mcp (free tier)
+- [ ] Cloudflare: add R2 public bucket for whitepaper PDF
+- [ ] Cloudflare: add Workers AI to summarise incidents in /try
+- [ ] Cloudflare: add Browser Rendering for share-image generation
+- [ ] Cloudflare: add Logpush to local R2 for audit trail
+- [ ] Cloudflare: enable Bot Fight Mode (free)
