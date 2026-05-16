@@ -5,6 +5,11 @@
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
 [![Model Context Protocol](https://img.shields.io/badge/MCP-Ready-green)](https://modelcontextprotocol.io/)
 [![Live Demo](https://img.shields.io/badge/demo-live-success)](https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/healthz)
+[![GitHub Stars](https://img.shields.io/github/stars/smq9sn5jck-coder/causallayer-mcp?style=flat&logo=github)](https://github.com/smq9sn5jck-coder/causallayer-mcp/stargazers)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![OpenAPI](https://img.shields.io/badge/OpenAPI-3.1-85ea2d?logo=openapiinitiative&logoColor=white)](./openapi.yaml)
+[![security: ed25519](https://img.shields.io/badge/signing-Ed25519-181717)](./SECURITY.md)
+[![anchored: Bitcoin](https://img.shields.io/badge/anchor-Bitcoin%20%2B%20OpenTimestamps-f7931a?logo=bitcoin&logoColor=white)](https://opentimestamps.org)
 
 > **Deterministic fault math for multi-party AI incidents.** When an AI causes harm and three parties argue over who pays, FaultKey returns a signed, Bitcoin-anchored certificate of fault allocation in under 200 ms — no LLM, no probabilistic scoring, no vendor cooperation needed for a third party to verify.
 

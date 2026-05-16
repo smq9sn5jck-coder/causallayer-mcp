@@ -670,6 +670,20 @@ export default {
   ): Promise<Response> {
     const url = new URL(request.url);
 
+    // CORS preflight — accept everything (it's a public demo).
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "GET, POST, OPTIONS",
+          "access-control-allow-headers": "content-type, authorization, mcp-session-id, accept",
+          "access-control-expose-headers": "mcp-session-id",
+          "access-control-max-age": "86400",
+        },
+      });
+    }
+
     // Liveness probe + directory listing
     if (url.pathname === "/healthz" || url.pathname === "/") {
       return json({
@@ -757,7 +771,18 @@ export default {
       // runtime reads it from here (same mechanism used by OAuthProvider).
       (ctx as unknown as { props: Record<string, unknown> }).props =
         tenantProps as unknown as Record<string, unknown>;
-      return CausalLayerMCP.serve("/mcp").fetch(request, env, ctx);
+      const mcpRes = await CausalLayerMCP.serve("/mcp").fetch(request, env, ctx);
+      // Re-emit with CORS headers so browsers can call /mcp directly.
+      const newHeaders = new Headers(mcpRes.headers);
+      newHeaders.set("access-control-allow-origin", "*");
+      newHeaders.set("access-control-allow-methods", "GET, POST, OPTIONS");
+      newHeaders.set("access-control-allow-headers", "content-type, authorization, mcp-session-id, accept");
+      newHeaders.set("access-control-expose-headers", "mcp-session-id");
+      return new Response(mcpRes.body, {
+        status: mcpRes.status,
+        statusText: mcpRes.statusText,
+        headers: newHeaders,
+      });
     }
 
     return json({ error: "not_found", path: url.pathname }, 404);

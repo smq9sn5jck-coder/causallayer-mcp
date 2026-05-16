@@ -1,29 +1,38 @@
 {
   "name": "causallayer-mcp",
   "version": "0.2.0",
-  "description": "One-line MCP client for the CausalLayer deterministic AI-liability attribution engine. Spawns mcp-remote against the public demo (or your paid tenant) for Claude Desktop, Cursor, Cline, Continue.",
+  "description": "FaultKey · CausalLayer MCP — one-line install for Claude Desktop, Cursor, Cline. Deterministic AI liability attribution with Bitcoin-anchored signed certificates.",
   "license": "Apache-2.0",
-  "author": "CausalLayer",
+  "author": "FaultKey / CausalLayer",
   "repository": {
     "type": "git",
-    "url": "https://github.com/causallayer/causallayer-mcp.git"
+    "url": "git+https://github.com/smq9sn5jck-coder/causallayer-mcp.git"
   },
-  "homepage": "https://causallayer.io",
+  "homepage": "https://github.com/smq9sn5jck-coder/causallayer-mcp#readme",
+  "bugs": { "url": "https://github.com/smq9sn5jck-coder/causallayer-mcp/issues" },
   "keywords": [
     "mcp",
     "model-context-protocol",
     "ai-governance",
     "ai-liability",
+    "ai-incident",
+    "ai-fault-attribution",
     "model-risk-management",
     "eu-ai-act",
+    "iso-42001",
     "apra-cps-230",
     "claude-desktop",
     "cursor",
-    "cline"
+    "cline",
+    "windsurf",
+    "regtech",
+    "faultkey",
+    "causallayer"
   ],
   "type": "module",
   "bin": {
-    "causallayer-mcp": "./bin/causallayer-mcp.mjs"
+    "causallayer-mcp": "./bin/causallayer-mcp.mjs",
+    "faultkey": "./bin/causallayer-mcp.mjs"
   },
   "files": [
     "bin/",

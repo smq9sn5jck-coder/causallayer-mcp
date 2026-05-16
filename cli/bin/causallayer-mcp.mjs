@@ -12,7 +12,7 @@
  * Continue / VS Code without any setup.
  *
  * Flags:
- *   --url <url>         Override server URL (default: https://demo.causallayer.io/mcp)
+ *   --url <url>         Override server URL (default: live demo Worker on Cloudflare)
  *   --api-key <key>     Use Bearer auth for a paid tenant (clk_…)
  *   --env <name>        Shorthand for known envs: demo | sandbox | production
  *   --help              Print this message
@@ -64,14 +64,14 @@ if (!url) {
   switch ((env ?? "demo").toLowerCase()) {
     case "production":
     case "prod":
-      url = "https://mcp.causallayer.io/mcp";
+      url = "https://mcp.faultkey.com/mcp";
       break;
     case "sandbox":
       url = "https://causallayer-mcp-sandbox.workers.dev/mcp";
       break;
     case "demo":
     default:
-      url = "https://demo.causallayer.io/mcp";
+      url = "https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp";
       break;
   }
 }

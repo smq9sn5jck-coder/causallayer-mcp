@@ -1,0 +1,29 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schemas/well-known/v1.json",
+  "name": "io.faultkey/causallayer-mcp",
+  "title": "FaultKey · CausalLayer",
+  "description": "Deterministic AI-liability attribution. Issues signed, Bitcoin-anchored CausalCertificateV1 receipts that compute vendor/deployer/user liability splits for AI incidents. Closed-form math, byte-identical reproducible, no LLMs in the scoring path.",
+  "version": "0.2.0",
+  "vendor": "FaultKey Protocol",
+  "license": "Apache-2.0",
+  "repository": "https://github.com/smq9sn5jck-coder/causallayer-mcp",
+  "homepage": "https://faultkey.com",
+  "endpoints": {
+    "production": "https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp",
+    "demo": "https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp"
+  },
+  "transport": ["http", "sse"],
+  "auth": {
+    "type": "bearer",
+    "demo_mode": "anonymous"
+  },
+  "capabilities": ["tools"],
+  "tools": [
+    { "name": "submit_incident",       "description": "Issue a CausalCertificateV1 attributing fault between vendor / deployer / user.", "credits": 50 },
+    { "name": "verify_certificate",    "description": "Verify the signature and Bitcoin anchor of a CausalCertificateV1.",                "credits": 1  },
+    { "name": "get_anchor_status",     "description": "Look up the OpenTimestamps anchor status for a certificate.",                       "credits": 0  },
+    { "name": "query_issuer_registry", "description": "List trusted FaultKey issuer keys.",                                                "credits": 0  }
+  ],
+  "tags": ["ai-governance", "ai-liability", "regtech", "compliance", "audit", "regulated", "remote", "free-tier"],
+  "regulated_use_cases": ["APRA CPS 230", "EU AI Act Article 12", "ISO/IEC 42001", "NIST AI RMF"]
+}

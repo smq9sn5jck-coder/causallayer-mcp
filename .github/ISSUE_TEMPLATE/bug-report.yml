@@ -1,0 +1,28 @@
+name: "Bug report"
+description: "Report a bug in causallayer-mcp."
+title: "[BUG] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: "What happened?"
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes:
+      label: "What did you expect?"
+  - type: textarea
+    id: repro
+    attributes:
+      label: "Reproduction steps"
+      render: bash
+  - type: input
+    id: client
+    attributes:
+      label: "MCP client (Claude Desktop / Cursor / curl / other)"
+  - type: input
+    id: version
+    attributes:
+      label: "Server version"
+      value: "0.2.0"

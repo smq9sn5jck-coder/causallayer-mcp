@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+title: "CausalLayer MCP — Deterministic AI-Liability Attribution"
+message: "If you use this software in research, please cite it using the metadata below."
+type: software
+authors:
+  - name: "FaultKey Protocol"
+    address: "Brisbane, Queensland, Australia"
+    website: "https://faultkey.com"
+repository-code: "https://github.com/smq9sn5jck-coder/causallayer-mcp"
+url: "https://faultkey.com"
+abstract: >
+  CausalLayer MCP is a Model Context Protocol server that issues signed,
+  Bitcoin-anchored CausalCertificateV1 receipts attributing AI-incident
+  liability between vendor, deployer, and end-user using a closed-form
+  deterministic scoring function. Designed for AI insurance underwriting,
+  APRA CPS 230 compliance, and EU AI Act Article 12 logging.
+keywords:
+  - "model context protocol"
+  - "AI liability"
+  - "AI governance"
+  - "causal attribution"
+  - "regtech"
+  - "Ed25519"
+  - "OpenTimestamps"
+  - "deterministic AI"
+license: Apache-2.0
+version: "0.2.0"
+date-released: "2026-05-17"

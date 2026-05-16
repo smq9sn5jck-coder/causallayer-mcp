@@ -390,6 +390,13 @@ export async function handleStripeWebhook(
 export function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      "access-control-allow-origin": "*",
+      "access-control-allow-methods": "GET, POST, OPTIONS",
+      "access-control-allow-headers": "content-type, authorization, mcp-session-id, accept",
+      "access-control-expose-headers": "mcp-session-id",
+      "access-control-max-age": "86400",
+    },
   });
 }

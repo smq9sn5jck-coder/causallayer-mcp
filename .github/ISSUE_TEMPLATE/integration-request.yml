@@ -1,0 +1,36 @@
+name: "Integration request"
+description: "Tell us how you want to use CausalLayer MCP in production."
+title: "[INTEGRATION] "
+labels: ["integration", "needs-triage"]
+body:
+  - type: textarea
+    id: use-case
+    attributes:
+      label: "What are you trying to attribute?"
+      description: "Describe the AI incident or production workflow."
+      placeholder: "e.g. Claude-powered support agent gives wrong refund advice; we need to attribute fault between us (deployer), Anthropic (vendor), and the customer."
+    validations:
+      required: true
+  - type: dropdown
+    id: industry
+    attributes:
+      label: "Industry"
+      options:
+        - "Insurance (underwriter / claims)"
+        - "Banking / APRA-regulated"
+        - "Healthcare"
+        - "Legal / e-discovery"
+        - "AI vendor (issuing pre-emptive certificates)"
+        - "Other regtech"
+        - "Research / academic"
+    validations:
+      required: true
+  - type: input
+    id: volume
+    attributes:
+      label: "Expected monthly volume of certificates"
+      placeholder: "e.g. ~5,000 / month"
+  - type: input
+    id: contact
+    attributes:
+      label: "Best contact (email or LinkedIn)"
