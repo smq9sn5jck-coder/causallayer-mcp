@@ -1,46 +1,45 @@
-# FaultKey · Non-webpage distribution todo
+# FaultKey · Zero-cost launch track (no credit card)
 
-## Phase 1 — GitHub repo SEO + discoverability
-- [ ] Add SECURITY.md, FUNDING.yml, CITATION.cff
-- [ ] Add README badges (license, MCP-compatible, Cloudflare, version)
-- [ ] Add a social-preview image (the hero certificate)
-- [ ] Create v0.2.0 GitHub Release with release notes
-- [ ] Publish OPENAPI.yaml (so AI/MCP crawlers can ingest it)
-- [ ] Add .well-known/mcp.json pointer (so any MCP-aware crawler discovers us)
+> Resumed track after billing concern — every step below uses free tiers only and the existing Cloudflare auth.
 
-## Phase 2 — Official MCP Registry (registry.modelcontextprotocol.io)
-- [ ] Validate server.json against schema
-- [ ] Run `mcp-publisher publish` and verify listing
+## Phase 1 — Free hosting for the landing page (Cloudflare Pages, no card)
+- [ ] Build production bundle of `/home/ubuntu/faultkey-landing`
+- [ ] Deploy via `wrangler pages deploy` using the existing token
+- [ ] Confirm `*.pages.dev` URL returns HTTP 200 with the Forensic-Document hero
 
-## Phase 3 — Marketplaces
-- [ ] Smithery — submit via smithery CLI / GitHub-issue
-- [ ] Glama — confirm auto-crawl picked us up
-- [ ] mcp.so — open the GitHub-issue submission template
-- [ ] PulseMCP — submit via their suggest-server form
-- [ ] MCP Hunt — schedule for launch day
-- [ ] mcpserverfinder.com — submit listing
+## Phase 2 — GitHub Pages fallback (also free)
+- [ ] Push static bundle to a `gh-pages` branch on causallayer-mcp
+- [ ] Enable Pages from that branch
+- [ ] Confirm fallback URL returns HTTP 200
 
-## Phase 4 — Awesome list PRs (one-tap URLs already prepared)
-- [ ] punkpeye/awesome-mcp-servers
-- [ ] wong2/awesome-mcp-servers
-- [ ] appcypher/awesome-mcp-servers
-- [ ] JAW9C/awesome-remote-mcp-servers
+## Phase 3 — Domain binding (one tap from your phone)
+- [ ] Generate the exact Cloudflare DNS record(s) for `faultkey.com` apex → Pages
 
-## Phase 5 — Cloudflare ecosystem
-- [ ] Cloudflare Workers Showcase / built-with directory
-- [ ] Cloudflare Discord #showcase post
-- [ ] Cloudflare Community forum thread (gets Google + indexed by Cloudflare's own search)
+## Phase 4 — Launch posts (exact copy, ready to fire from phone)
+- [ ] HN Show — Tue/Wed 8 am US ET
+- [ ] r/mcp + r/LocalLLaMA + r/ClaudeAI
+- [ ] X/Twitter long-form thread with the hero image
+- [ ] LinkedIn AI-governance angle
+- [ ] Mastodon (fosstodon.org)
+- [ ] dev.to / hashnode technical post
 
-## Phase 6 — Package registries
-- [ ] npm: prep tarball for offline publish (user runs `npm publish` from a laptop)
-- [ ] JSR / Deno: optional alt registry
+## Phase 5 — Outreach scripts (cold but personalised)
+- [ ] AI insurer / underwriter
+- [ ] APRA / RegTech Australia
+- [ ] Brisbane / QUT / UQ AI-safety angle
 
-## Phase 7 — Syndication / search-engine signaling
-- [ ] IndexNow ping for landing-page URL (Bing/Yandex/Seznam)
-- [ ] GitHub Releases RSS feed (auto-emits via /releases.atom)
-- [ ] Add structured-data hints to README
-- [ ] Pingomatic/Pubsubhubbub for blog syndication (if blog exists)
+## Phase 6 — Bundle + deliver
+- [ ] Update LAUNCH.md v2 in the public repo
+- [ ] Phone-friendly checklist with one-tap links
+- [ ] Final report
 
-## Phase 8 — Repo-as-playbook
-- [ ] LAUNCH.md with all submission URLs + copy
-- [ ] /docs/PRESS.md with one-line, one-paragraph, one-page descriptions
+---
+
+## Carried over (already DONE in earlier phases)
+- [x] Worker deployed live with CORS at `causallayer-mcp-demo.zykm9qkk7j.workers.dev`
+- [x] Public GitHub repo with topics, badges, SECURITY.md, FUNDING.yml, CITATION.cff, OpenAPI, .well-known/mcp.json
+- [x] v0.2.0 GitHub Release tagged + Atom feed live
+- [x] Published to official MCP Registry (`io.github.smq9sn5jck-cloud/causallayer-mcp`)
+- [x] LAUNCH.md v1 with 30 prefilled submission URLs
+- [x] smithery.yaml in repo root
+- [x] llms.txt + ai.txt + robots.txt in landing page public dir
