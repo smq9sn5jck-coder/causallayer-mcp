@@ -1,0 +1,30 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.faultkey/causallayer-mcp",
+  "description": "Deterministic AI-liability attribution. Returns a signed, Bitcoin-anchored CausalCertificateV1 (Ed25519 + OpenTimestamps) proving who pays (vendor / deployer / user) when an AI incident occurs. Closed-form causal scoring — no LLMs.",
+  "title": "FaultKey · CausalLayer",
+  "websiteUrl": "https://faultkey.com",
+  "repository": {
+    "url": "https://github.com/smq9sn5jck-coder/causallayer-mcp",
+    "source": "github"
+  },
+  "version": "0.2.0",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp"
+    }
+  ],
+  "_meta": {
+    "io.modelcontextprotocol.registry/publisher-provided": {
+      "tool": "wrangler",
+      "version": "4.14.4",
+      "categories": ["ai-governance", "liability", "regtech", "security", "audit", "compliance"],
+      "compliance_mappings": ["APRA CPS 230", "EU AI Act", "ISO/IEC 42001", "NIST AI RMF"],
+      "deterministic": true,
+      "uses_llm": false,
+      "byte_identical_reproducible": true,
+      "verification_method": "Independent third-party with Node.js built-in crypto"
+    }
+  }
+}
