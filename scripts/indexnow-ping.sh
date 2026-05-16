@@ -3,17 +3,18 @@
 # Naver, and (eventually) every IndexNow participant in one POST.
 # Docs: https://www.indexnow.org/documentation
 #
-# Setup (one-time, after faultkey.com is published):
+# Setup (one-time):
 #   1. Generate a key: openssl rand -hex 32
-#   2. Save the key as <KEY>.txt at the root of faultkey.com (e.g., https://faultkey.com/abc123.txt
-#      whose content is "abc123" — a self-verification file).
+#   2. Drop <KEY>.txt into faultkey-landing/client/public/ with body == <KEY>,
+#      then rebuild & redeploy so it serves at
+#      https://faultkey.pages.dev/<KEY>.txt
 #   3. Export INDEXNOW_KEY=<that key> in your shell.
 #   4. Run this script after every content update.
 
 set -euo pipefail
 
 KEY="${INDEXNOW_KEY:-}"
-HOST="faultkey.com"
+HOST="faultkey.pages.dev"
 
 if [[ -z "$KEY" ]]; then
   echo "ERROR: INDEXNOW_KEY env var is not set." >&2
