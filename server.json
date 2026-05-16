@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "com.faultkey/causallayer-mcp",
-  "description": "Deterministic AI-liability attribution. Returns a signed, Bitcoin-anchored CausalCertificateV1 (Ed25519 + OpenTimestamps) proving who pays (vendor / deployer / user) when an AI incident occurs. Closed-form causal scoring — no LLMs.",
+  "name": "io.github.smq9sn5jck-cloud/causallayer-mcp",
+  "description": "Deterministic AI-liability attribution: signed, Bitcoin-anchored vendor/deployer/user fault split.",
   "title": "FaultKey · CausalLayer",
   "websiteUrl": "https://faultkey.com",
   "repository": {
