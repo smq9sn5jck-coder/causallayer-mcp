@@ -9,8 +9,8 @@
   "repository": "https://github.com/smq9sn5jck-coder/causallayer-mcp",
   "homepage": "https://faultkey.pages.dev",
   "endpoints": {
-    "production": "https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp",
-    "demo": "https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp"
+    "production": "https://mcp.faultkey.com/mcp",
+    "demo": "https://mcp.faultkey.com/mcp"
   },
   "transport": ["http", "sse"],
   "auth": {

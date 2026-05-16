@@ -2,7 +2,7 @@
 # This is a remote MCP server (not deployed via Smithery's runtime) — we point at our existing Cloudflare Worker.
 runtime: "remote"
 remote:
-  url: "https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp"
+  url: "https://mcp.faultkey.com/mcp"
   transport: "streamable-http"
 
 metadata:

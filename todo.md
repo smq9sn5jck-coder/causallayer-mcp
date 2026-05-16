@@ -35,6 +35,18 @@
 
 ---
 
+## Phase 7 — Crawl/visibility audit + remaining-angle hunt (post-launch)
+- [ ] Pull Cloudflare Worker analytics (req count, bot vs human, by country)
+- [ ] Pull Cloudflare Pages analytics for faultkey.pages.dev
+- [ ] Pull GitHub repo traffic API (views, clones, referrers, popular paths)
+- [ ] Verify MCP Registry listing is queryable + Smithery/Glama/PulseMCP crawl
+- [ ] Check sitemap fetch evidence (bingbot, applebot, ddg, claudebot)
+- [ ] Run IndexNow ping (stage key if needed)
+- [ ] Hit every remaining free findability surface (Stack Overflow tag watch, OpenSSF, libraries.io, sourcegraph, Codeberg mirror, Software Heritage, alternativeto.net, AlternativeMCP, lobste.rs, Tildes, federated wikis, ProductHunt-style alts)
+- [ ] Stage one-tap URLs for anything that requires user auth
+
+---
+
 ## Carried over (already DONE in earlier phases)
 - [x] Worker deployed live with CORS at `causallayer-mcp-demo.zykm9qkk7j.workers.dev`
 - [x] Public GitHub repo with topics, badges, SECURITY.md, FUNDING.yml, CITATION.cff, OpenAPI, .well-known/mcp.json

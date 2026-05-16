@@ -60,6 +60,6 @@ The engine is closed-source. This MCP client is open-source under Apache-2.0.
 ## Links
 
 - Repo: https://github.com/smq9sn5jck-coder/causallayer-mcp
-- Live demo Worker: https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/healthz
-- Demand-signal stats (anonymous): https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/stats
+- Live demo Worker: https://mcp.faultkey.com/healthz
+- Demand-signal stats (anonymous): https://mcp.faultkey.com/stats
 - Issues: https://github.com/smq9sn5jck-coder/causallayer-mcp/issues

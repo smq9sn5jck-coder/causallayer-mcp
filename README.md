@@ -1,10 +1,13 @@
 # FaultKey · CausalLayer MCP Server
 
-[![npm version](https://img.shields.io/npm/v/causallayer-mcp.svg)](https://www.npmjs.com/package/causallayer-mcp)
+[![CI](https://github.com/smq9sn5jck-coder/causallayer-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/smq9sn5jck-coder/causallayer-mcp/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/smq9sn5jck-coder/causallayer-mcp/actions/workflows/codeql.yml/badge.svg)](https://github.com/smq9sn5jck-coder/causallayer-mcp/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/smq9sn5jck-coder/causallayer-mcp/badge)](https://scorecard.dev/viewer/?uri=github.com/smq9sn5jck-coder/causallayer-mcp)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![npm version](https://img.shields.io/npm/v/causallayer-mcp.svg)](https://www.npmjs.com/package/causallayer-mcp)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
 [![Model Context Protocol](https://img.shields.io/badge/MCP-Ready-green)](https://modelcontextprotocol.io/)
-[![Live Demo](https://img.shields.io/badge/demo-live-success)](https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/healthz)
+[![Live Demo](https://img.shields.io/badge/demo-live-success)](https://mcp.faultkey.com/healthz)
 [![GitHub Stars](https://img.shields.io/github/stars/smq9sn5jck-coder/causallayer-mcp?style=flat&logo=github)](https://github.com/smq9sn5jck-coder/causallayer-mcp/stargazers)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![OpenAPI](https://img.shields.io/badge/OpenAPI-3.1-85ea2d?logo=openapiinitiative&logoColor=white)](./openapi.yaml)
@@ -19,11 +22,10 @@ This is the official [Model Context Protocol (MCP)](https://modelcontextprotocol
 
 The public Worker is deployed on Cloudflare's global edge network and is fully functional in standalone demo mode (deterministic responses, watermarked, rate-limited 5 calls / IP / day):
 
-- **Endpoint:** `https://causallayer-mcp-demo.zykm9qkk7j.workers.dev`
-- **Healthcheck:** [`/healthz`](https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/healthz)
-- **Demand telemetry:** [`/stats`](https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/stats) (public, aggregated, no PII)
-
-Custom domain `mcp.faultkey.com` is provisioned and resolves once Cloudflare DNS propagates.
+- **Endpoint:** `https://mcp.faultkey.com/mcp` (live, custom domain) 
+- **Mirror:** `https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp`
+- **Healthcheck:** [`/healthz`](https://mcp.faultkey.com/healthz)
+- **Demand telemetry:** [`/stats`](https://mcp.faultkey.com/stats) (public, aggregated, no PII)
 
 ## Quick start
 

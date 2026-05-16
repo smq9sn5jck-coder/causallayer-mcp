@@ -24,4 +24,4 @@ This MCP server exposes 4 tools:
 - **Transport:** HTTP (Streamable)
 - **Tags/Categories:** AI Governance, Liability, RegTech, Security, Audit, Compliance, Cloudflare Workers
 - **Install Command:** `npx -y causallayer-mcp`
-- **Demo URL:** `https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp`
+- **Demo URL:** `https://mcp.faultkey.com/mcp`

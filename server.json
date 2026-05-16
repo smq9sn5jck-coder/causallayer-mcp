@@ -2,25 +2,37 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.smq9sn5jck-cloud/causallayer-mcp",
   "description": "Deterministic AI-liability attribution: signed, Bitcoin-anchored vendor/deployer/user fault split.",
-  "title": "FaultKey · CausalLayer",
+  "title": "FaultKey \u00b7 CausalLayer",
   "websiteUrl": "https://faultkey.pages.dev",
   "repository": {
     "url": "https://github.com/smq9sn5jck-coder/causallayer-mcp",
     "source": "github"
   },
-  "version": "0.2.0",
+  "version": "0.2.1",
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp"
+      "url": "https://mcp.faultkey.com/mcp"
     }
   ],
   "_meta": {
     "io.modelcontextprotocol.registry/publisher-provided": {
       "tool": "wrangler",
       "version": "4.14.4",
-      "categories": ["ai-governance", "liability", "regtech", "security", "audit", "compliance"],
-      "compliance_mappings": ["APRA CPS 230", "EU AI Act", "ISO/IEC 42001", "NIST AI RMF"],
+      "categories": [
+        "ai-governance",
+        "liability",
+        "regtech",
+        "security",
+        "audit",
+        "compliance"
+      ],
+      "compliance_mappings": [
+        "APRA CPS 230",
+        "EU AI Act",
+        "ISO/IEC 42001",
+        "NIST AI RMF"
+      ],
       "deterministic": true,
       "uses_llm": false,
       "byte_identical_reproducible": true,

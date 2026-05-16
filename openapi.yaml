@@ -16,7 +16,7 @@ info:
     name: Apache-2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html
 servers:
-  - url: https://causallayer-mcp-demo.zykm9qkk7j.workers.dev
+  - url: https://mcp.faultkey.com
     description: Public demo (anonymous, free, rate-limited)
 paths:
   /healthz:
