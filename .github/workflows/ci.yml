@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build & validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Worker deps
+        run: npm install --no-audit --no-fund || true
+
+      - name: Install CLI deps
+        working-directory: ./cli
+        run: npm install --no-audit --no-fund
+
+      - name: Validate JSON / YAML manifests
+        run: |
+          set -e
+          for f in server.json mcp.json package.json cli/package.json; do
+            [ -f "<LaTex>$f" ] && node -e "JSON.parse(require('fs').readFileSync('$</LaTex>f','utf8'))" && echo "  ok: <LaTex>$f"
+          done
+          for f in smithery.yaml openapi.yaml .github/dependabot.yml; do
+            [ -f "$</LaTex>f" ] && python3 -c "import yaml; yaml.safe_load(open('<LaTex>$f'))" && echo "  ok: $</LaTex>f"
+          done
+
+      - name: Verify CLI shim is executable
+        run: |
+          set -e
+          chmod +x cli/bin/causallayer-mcp.mjs
+          head -1 cli/bin/causallayer-mcp.mjs | grep -q '^#!/usr/bin/env node' && echo "  ok: CLI shebang"
+
+  integration:
+    name: Live MCP integration check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Probe live MCP endpoint (initialize)
+        run: |
+          set -e
+          for url in https://mcp.faultkey.com/mcp https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp; do
+            echo "Probing <LaTex>$url ..."
+            RESP=$</LaTex>(curl -sS -X POST "$url" \
+              -H "Content-Type: application/json" \
+              -H "Accept: application/json, text/event-stream" \
+              --max-time 10 \
+              -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}')
+            echo "$RESP" | head -c 400
+            echo ""
+            echo "<LaTex>$RESP" | grep -q '"causallayer-mcp"' && echo "  ✓ initialize OK on $</LaTex>url"
+          done
+
+      - name: Probe tools/list
+        run: |
+          set -e
+          RESP=<LaTex>$(curl -sS -X POST "https://mcp.faultkey.com/mcp" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json, text/event-stream" \
+            --max-time 10 \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
+          echo "$</LaTex>RESP" | head -c 600
+          echo ""
+          echo "<LaTex>$RESP" | grep -q "submit_incident" && echo "  ✓ submit_incident exposed"
+          echo "$</LaTex>RESP" | grep -q "verify_certificate" && echo "  ✓ verify_certificate exposed"
+          echo "<LaTex>$RESP" | grep -q "get_anchor_status" && echo "  ✓ get_anchor_status exposed"
+          echo "$</LaTex>RESP" | grep -q "query_issuer_registry" && echo "  ✓ query_issuer_registry exposed"
+
+  docker:
+    name: Docker build (Glama-compatible stdio image)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: causallayer-mcp:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
