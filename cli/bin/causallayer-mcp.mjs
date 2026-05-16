@@ -23,6 +23,11 @@
 
 import { spawn } from "node:child_process";
 import process from "node:process";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const args = process.argv.slice(2);
 
@@ -56,8 +61,8 @@ if (takeBool("--help") || takeBool("-h")) {
   process.exit(0);
 }
 
-const env = take("--env");
-let url = take("--url");
+const env = take("--env") || process.env.CAUSALLAYER_ENV;
+let url = take("--url") || process.env.CAUSALLAYER_URL;
 const apiKey = take("--api-key") || process.env.CAUSALLAYER_API_KEY;
 
 if (!url) {
@@ -81,8 +86,18 @@ if (apiKey) {
   passthrough.push("--header", `Authorization: Bearer ${apiKey}`);
 }
 
-// `mcp-remote <url> [extra-args]`
-const child = spawn("npx", ["-y", "mcp-remote", url, ...passthrough], {
+// Prefer the locally installed mcp-remote binary (works fully offline in
+// containerised launchers like Glama / Smithery). Fall back to `npx -y` for
+// `npx causallayer-mcp` users who haven't installed anything.
+const localBin = resolve(__dirname, "..", "node_modules", ".bin", "mcp-remote");
+const hasLocal = existsSync(localBin);
+
+const cmd = hasLocal ? localBin : "npx";
+const cmdArgs = hasLocal
+  ? [url, ...passthrough]
+  : ["-y", "mcp-remote", url, ...passthrough];
+
+const child = spawn(cmd, cmdArgs, {
   stdio: "inherit",
   env: process.env,
 });

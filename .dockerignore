@@ -1,0 +1,17 @@
+node_modules
+.wrangler
+.git
+.github
+test
+docs
+LAUNCH.md
+LAUNCH_POSTS.md
+LAUNCH_GAPS.md
+SUBMISSIONS.json
+RELEASE_NOTES_v0.2.0.md
+SKILL.md
+todo.md
+submission_copy.md
+.indexnow_key
+*.log
+cli/node_modules
