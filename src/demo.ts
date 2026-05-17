@@ -259,19 +259,28 @@ export async function recordTelemetry(
       { expirationTtl: TELEMETRY_TTL_SECONDS }
     );
 
-    // 2. Increment aggregate counters used by /stats
+    // 2. Increment aggregate counters used by /stats and /admin/stats
+    const tenant = (payload.tenant_id ?? "anonymous").replace(/[^a-zA-Z0-9:_\-]/g, "_").slice(0, 64);
     const counters = [
       `tlm:agg:${day}:tool:${payload.tool}`,
       `tlm:agg:${day}:outcome:${payload.outcome}`,
       `tlm:agg:${day}:ua:${ua}`,
       `tlm:agg:${day}:cc:${cc}`,
       `tlm:agg:${day}:total`,
-      `tlm:uniq:${day}:ip:${ip}`, // existence-only, dedupes unique IPs/day
+      `tlm:agg:${day}:tenant:${tenant}`,
+      `tlm:agg:${day}:tenant_tool:${tenant}:${payload.tool}`,
+      `tlm:agg:${day}:tenant_outcome:${tenant}:${payload.outcome}`,
+      `tlm:uniq:${day}:ip:${ip}`,             // existence-only, dedupes unique IPs/day
+      `tlm:uniq:${day}:tenant:${tenant}`,     // existence-only, dedupes active tenants/day
+      `tlm:uniq7:ip:${ip}`,                   // 7-day rolling unique IPs (TTL=7d)
     ];
     await Promise.all(
       counters.map(async (k) => {
         if (k.startsWith("tlm:uniq:")) {
           await env.LEDGER.put(k, "1", { expirationTtl: TELEMETRY_TTL_SECONDS });
+        } else if (k.startsWith("tlm:uniq7:")) {
+          // 7 days exactly; lets us count distinct IPs across the rolling window without summing per-day
+          await env.LEDGER.put(k, "1", { expirationTtl: 7 * 24 * 60 * 60 });
         } else {
           const cur = Number.parseInt((await env.LEDGER.get(k)) || "0", 10);
           await env.LEDGER.put(k, String(cur + 1), {
@@ -292,12 +301,12 @@ export async function recordTelemetry(
  */
 export async function handleStats(env: BillingEnv): Promise<Response> {
   const days = 7;
-  const out: Record<string, Record<string, number>> = {};
+  const out: Record<string, Record<string, number | Record<string, number>>> = {};
   for (let i = 0; i < days; i++) {
     const d = new Date();
     d.setUTCDate(d.getUTCDate() - i);
     const day = isoDay(d);
-    const dayBucket: Record<string, number> = {};
+    const dayBucket: Record<string, number | Record<string, number>> = {};
 
     const tools: ToolName[] = [
       "submit_incident",
@@ -313,10 +322,33 @@ export async function handleStats(env: BillingEnv): Promise<Response> {
       const v = await env.LEDGER.get(`tlm:agg:${day}:outcome:${o}`);
       dayBucket[`outcome_${o}`] = Number.parseInt(v || "0", 10);
     }
+    const uaBreakdown: Record<string, number> = {};
     for (const ua of ["claude", "cursor", "cline", "continue", "vscode", "inspector", "other"]) {
       const v = await env.LEDGER.get(`tlm:agg:${day}:ua:${ua}`);
-      if (v) dayBucket[`ua_${ua}`] = Number.parseInt(v, 10);
+      if (v) {
+        const n = Number.parseInt(v, 10);
+        dayBucket[`ua_${ua}`] = n;
+        uaBreakdown[ua] = n;
+      }
     }
+    if (Object.keys(uaBreakdown).length > 0) dayBucket.ua_breakdown = uaBreakdown;
+
+    // Country breakdown (NEW). Two-letter ISO from Cloudflare's CF-IPCountry header.
+    // Listed via prefix scan because the country set is open-ended.
+    const ccList = await env.LEDGER.list({ prefix: `tlm:agg:${day}:cc:`, limit: 1000 });
+    if (ccList.keys.length > 0) {
+      const ccBreakdown: Record<string, number> = {};
+      await Promise.all(
+        ccList.keys.map(async (k) => {
+          const cc = k.name.slice(`tlm:agg:${day}:cc:`.length);
+          const v = await env.LEDGER.get(k.name);
+          if (v) ccBreakdown[cc] = Number.parseInt(v, 10);
+        })
+      );
+      dayBucket.country_breakdown = ccBreakdown;
+      dayBucket.unique_countries = Object.keys(ccBreakdown).length;
+    }
+
     const total = await env.LEDGER.get(`tlm:agg:${day}:total`);
     dayBucket.total = Number.parseInt(total || "0", 10);
 
@@ -327,16 +359,195 @@ export async function handleStats(env: BillingEnv): Promise<Response> {
     });
     dayBucket.unique_ips = uniq.keys.length;
 
+    // Active tenants (NEW)
+    const tenantUniq = await env.LEDGER.list({
+      prefix: `tlm:uniq:${day}:tenant:`,
+      limit: 1000,
+    });
+    dayBucket.active_tenants = tenantUniq.keys.length;
+
     out[day] = dayBucket;
   }
 
-  return new Response(JSON.stringify({ days: out }, null, 2), {
+  // 7-day rolling unique IP count (NEW). Far more useful than summing per-day uniques
+  // because it correctly de-duplicates returning visitors.
+  const uniq7 = await env.LEDGER.list({ prefix: `tlm:uniq7:ip:`, limit: 1000 });
+  const totals_7d = {
+    unique_ips_7d: uniq7.keys.length,
+  };
+
+  return new Response(JSON.stringify({ days: out, totals_7d }, null, 2), {
     status: 200,
     headers: {
       "content-type": "application/json",
       "cache-control": "public, max-age=300",
     },
   });
+}
+
+/**
+ * /admin/stats — ADMIN_TOKEN-gated. Returns everything /stats does, plus:
+ *   - per-tenant breakdown (tool mix, outcome mix, daily count) for active tenants
+ *   - daily Cloudflare Workers Analytics (requests, p50/p95 latency) for the past 7 days
+ *     when CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_ANALYTICS_TOKEN are set in the env.
+ *
+ * Privacy: tenant identifiers shown here are your own (tenant_id from your KV),
+ * not third-party PII. Country and UA breakdowns are already public on /stats.
+ */
+export async function handleAdminStats(
+  env: BillingEnv & {
+    CLOUDFLARE_ACCOUNT_ID?: string;
+    CLOUDFLARE_ANALYTICS_TOKEN?: string;
+  }
+): Promise<Response> {
+  // Build the same daily bucket as /stats
+  const days = 7;
+  type DayRow = Record<string, number | Record<string, number | Record<string, number>>>;
+  const out: Record<string, DayRow> = {};
+  const tenantsSeen = new Set<string>();
+
+  for (let i = 0; i < days; i++) {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - i);
+    const day = isoDay(d);
+    const dayBucket: DayRow = {};
+
+    const total = await env.LEDGER.get(`tlm:agg:${day}:total`);
+    dayBucket.total = Number.parseInt(total || "0", 10);
+
+    // Tools
+    const toolsRow: Record<string, number> = {};
+    for (const t of ["submit_incident", "verify_certificate", "get_anchor_status", "query_issuer_registry"] as const) {
+      const v = await env.LEDGER.get(`tlm:agg:${day}:tool:${t}`);
+      toolsRow[t] = Number.parseInt(v || "0", 10);
+    }
+    dayBucket.tools = toolsRow;
+
+    // Outcomes
+    const outRow: Record<string, number> = {};
+    for (const o of ["ok", "error", "rate_limited", "guardrail_block"] as const) {
+      const v = await env.LEDGER.get(`tlm:agg:${day}:outcome:${o}`);
+      outRow[o] = Number.parseInt(v || "0", 10);
+    }
+    dayBucket.outcomes = outRow;
+
+    // Country breakdown
+    const ccList = await env.LEDGER.list({ prefix: `tlm:agg:${day}:cc:`, limit: 1000 });
+    const ccBreakdown: Record<string, number> = {};
+    await Promise.all(
+      ccList.keys.map(async (k) => {
+        const cc = k.name.slice(`tlm:agg:${day}:cc:`.length);
+        const v = await env.LEDGER.get(k.name);
+        if (v) ccBreakdown[cc] = Number.parseInt(v, 10);
+      })
+    );
+    if (Object.keys(ccBreakdown).length > 0) dayBucket.countries = ccBreakdown;
+
+    // Active tenants today
+    const tenantUniq = await env.LEDGER.list({ prefix: `tlm:uniq:${day}:tenant:`, limit: 1000 });
+    const tenantsToday: Record<string, Record<string, number>> = {};
+    for (const k of tenantUniq.keys) {
+      const tenant = k.name.slice(`tlm:uniq:${day}:tenant:`.length);
+      tenantsSeen.add(tenant);
+      const tenantTotal = await env.LEDGER.get(`tlm:agg:${day}:tenant:${tenant}`);
+      const row: Record<string, number> = {
+        total: Number.parseInt(tenantTotal || "0", 10),
+      };
+      // tool mix per tenant
+      for (const t of ["submit_incident", "verify_certificate", "get_anchor_status", "query_issuer_registry"] as const) {
+        const v = await env.LEDGER.get(`tlm:agg:${day}:tenant_tool:${tenant}:${t}`);
+        if (v && Number.parseInt(v, 10) > 0) row[`tool_${t}`] = Number.parseInt(v, 10);
+      }
+      // outcome mix per tenant
+      for (const o of ["ok", "error", "rate_limited", "guardrail_block"] as const) {
+        const v = await env.LEDGER.get(`tlm:agg:${day}:tenant_outcome:${tenant}:${o}`);
+        if (v && Number.parseInt(v, 10) > 0) row[`outcome_${o}`] = Number.parseInt(v, 10);
+      }
+      tenantsToday[tenant] = row;
+    }
+    if (Object.keys(tenantsToday).length > 0) dayBucket.tenants = tenantsToday;
+
+    out[day] = dayBucket;
+  }
+
+  // 7-day rolling uniques
+  const uniq7 = await env.LEDGER.list({ prefix: `tlm:uniq7:ip:`, limit: 1000 });
+
+  // Cloudflare Workers Analytics (optional)
+  let cf_analytics: unknown = null;
+  if (env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_ANALYTICS_TOKEN) {
+    cf_analytics = await fetchWorkersAnalytics(env.CLOUDFLARE_ACCOUNT_ID, env.CLOUDFLARE_ANALYTICS_TOKEN, days);
+  }
+
+  return new Response(
+    JSON.stringify(
+      {
+        days: out,
+        totals_7d: {
+          unique_ips_7d: uniq7.keys.length,
+          active_tenants_7d: tenantsSeen.size,
+        },
+        cf_analytics,
+        generated_at: new Date().toISOString(),
+      },
+      null,
+      2
+    ),
+    {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "cache-control": "private, no-store",
+      },
+    }
+  );
+}
+
+/**
+ * Cloudflare Workers Analytics via GraphQL. Returns daily request counts and
+ * latency percentiles for the worker that owns the API token.
+ * https://developers.cloudflare.com/analytics/graphql-api/
+ */
+async function fetchWorkersAnalytics(
+  accountId: string,
+  token: string,
+  days: number
+): Promise<unknown> {
+  const since = new Date();
+  since.setUTCDate(since.getUTCDate() - days);
+  const sinceISO = since.toISOString().slice(0, 10);
+  const untilISO = new Date().toISOString().slice(0, 10);
+  const query = `query($accountTag: string, $since: string, $until: string) {
+    viewer {
+      accounts(filter: { accountTag: $accountTag }) {
+        workersInvocationsAdaptive(
+          limit: 100,
+          filter: { date_geq: $since, date_leq: $until }
+        ) {
+          dimensions { date }
+          sum { requests subrequests errors }
+          quantiles { cpuTimeP50 cpuTimeP95 wallTimeP50 wallTimeP95 }
+        }
+      }
+    }
+  }`;
+  try {
+    const r = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        query,
+        variables: { accountTag: accountId, since: sinceISO, until: untilISO },
+      }),
+    });
+    if (!r.ok) return { error: `cf_analytics_http_${r.status}` };
+    return await r.json();
+  } catch (e) {
+    return { error: "cf_analytics_fetch_failed", message: String(e) };
+  }
 }
 
 /**
