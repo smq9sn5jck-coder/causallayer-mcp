@@ -11,3 +11,8 @@ coverage/
 .DS_Store
 .idea/
 .vscode/
+
+# IndexNow site-ownership keys must never be committed
+.indexnow_key
+*.indexnow.key
+.indexnow/
