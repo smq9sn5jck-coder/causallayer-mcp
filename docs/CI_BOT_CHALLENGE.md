@@ -1,4 +1,23 @@
-# CI: Cloudflare bot-challenge of GitHub Actions runners
+# CI on `main` is red — root-cause and fix
+
+Two independent CI bugs are present, both pre-existing and unrelated to any
+open feature PR (#10, #11, #12). The replacement
+`.github/workflows/ci.yml` shipped alongside this doc fixes both.
+
+## Bug 1 — `Build & validate` aborts when `mcp.json` is absent
+
+The `Validate JSON / YAML manifests` step uses `set -e` plus a chained
+`[ -f "$f" ] && cmd && echo` for each manifest. `mcp.json` is intentionally
+not part of this repo, so the test returns non-zero, the loop aborts, and
+the job exits 1. This was silently masked for a long time because the live
+integration job (Bug 2 below) was visibly failing first.
+
+**Fix:** rewrite the loop with explicit `if [ -f "$f" ]; then ... else echo
+"skip (missing)"; fi` so a missing file is logged and skipped without
+aborting. The same fix is applied to the `Verify CLI shim is executable`
+step.
+
+## Bug 2 — `Live MCP integration check` blocked by Cloudflare bot challenge
 
 ## Symptom
 
