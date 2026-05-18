@@ -45,6 +45,7 @@ import {
 import { handleAdmin } from "./admin.js";
 import {
   buildRequestMeta,
+  handleAdminStats,
   commitDemoUsage,
   demoWatermark,
   enforceDemoLimit,
@@ -715,6 +716,18 @@ export default {
     // Public demand-signal stats (anonymous, aggregated)
     if (url.pathname === "/stats") {
       return handleStats(env);
+    }
+
+    // /admin/stats — ADMIN_TOKEN-gated; per-tenant + Cloudflare Workers Analytics
+    if (url.pathname === "/admin/stats") {
+      const provided = request.headers.get("x-admin-token") ?? "";
+      if (!env.ADMIN_TOKEN || provided !== env.ADMIN_TOKEN) {
+        return new Response(JSON.stringify({ error: "unauthorized" }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return handleAdminStats(env as Parameters<typeof handleAdminStats>[0]);
     }
 
     // Admin + /me
