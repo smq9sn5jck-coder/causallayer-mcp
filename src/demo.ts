@@ -298,10 +298,39 @@ export async function recordTelemetry(
  * /stats endpoint — anonymous, public, returns the last 7 days of demand
  * signal. Safe to expose because everything is bucketed/aggregated and no
  * raw IPs or payloads are ever stored.
+ *
+ * Hardened in v0.3.1: per-day budget timeout + edge cache wrap. KV reads on
+ * busy days were spiking past the 30s wall-clock limit; this keeps response
+ * times under ~3s worst-case and serves a 60s edge-cached copy to repeat
+ * visitors.
  */
+const STATS_DAY_BUDGET_MS = 2500;
+const STATS_CACHE_TTL_S = 60;
+const EMPTY_LIST = {
+  keys: [],
+  list_complete: false,
+  cursor: "",
+  cacheStatus: null,
+};
+
+async function withBudget<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race<T>([
+      p,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function handleStats(env: BillingEnv): Promise<Response> {
   const days = 7;
   const out: Record<string, Record<string, number | Record<string, number>>> = {};
+  let truncated = false;
   for (let i = 0; i < days; i++) {
     const d = new Date();
     d.setUTCDate(d.getUTCDate() - i);
@@ -333,56 +362,76 @@ export async function handleStats(env: BillingEnv): Promise<Response> {
     }
     if (Object.keys(uaBreakdown).length > 0) dayBucket.ua_breakdown = uaBreakdown;
 
-    // Country breakdown (NEW). Two-letter ISO from Cloudflare's CF-IPCountry header.
+    // Country breakdown. Two-letter ISO from Cloudflare's CF-IPCountry header.
     // Listed via prefix scan because the country set is open-ended.
-    const ccList = await env.LEDGER.list({ prefix: `tlm:agg:${day}:cc:`, limit: 1000 });
+    // Capped at 100 keys per day + 2.5s budget. If the cap is hit, we mark the
+    // payload as truncated rather than blow the request budget.
+    const ccList = await withBudget(
+      env.LEDGER.list({ prefix: `tlm:agg:${day}:cc:`, limit: 100 }),
+      STATS_DAY_BUDGET_MS,
+      EMPTY_LIST as unknown as Awaited<ReturnType<typeof env.LEDGER.list>>
+    );
     if (ccList.keys.length > 0) {
       const ccBreakdown: Record<string, number> = {};
-      await Promise.all(
-        ccList.keys.map(async (k) => {
-          const cc = k.name.slice(`tlm:agg:${day}:cc:`.length);
-          const v = await env.LEDGER.get(k.name);
-          if (v) ccBreakdown[cc] = Number.parseInt(v, 10);
-        })
+      await withBudget(
+        Promise.all(
+          ccList.keys.map(async (k) => {
+            const cc = k.name.slice(`tlm:agg:${day}:cc:`.length);
+            const v = await env.LEDGER.get(k.name);
+            if (v) ccBreakdown[cc] = Number.parseInt(v, 10);
+          })
+        ),
+        STATS_DAY_BUDGET_MS,
+        []
       );
       dayBucket.country_breakdown = ccBreakdown;
       dayBucket.unique_countries = Object.keys(ccBreakdown).length;
+      if ((ccList as { list_complete?: boolean }).list_complete === false) truncated = true;
     }
 
     const total = await env.LEDGER.get(`tlm:agg:${day}:total`);
     dayBucket.total = Number.parseInt(total || "0", 10);
 
     // Unique IPs (count of keys with prefix tlm:uniq:{day}:ip:)
-    const uniq = await env.LEDGER.list({
-      prefix: `tlm:uniq:${day}:ip:`,
-      limit: 1000,
-    });
+    const uniq = await withBudget(
+      env.LEDGER.list({ prefix: `tlm:uniq:${day}:ip:`, limit: 1000 }),
+      STATS_DAY_BUDGET_MS,
+      EMPTY_LIST as unknown as Awaited<ReturnType<typeof env.LEDGER.list>>
+    );
     dayBucket.unique_ips = uniq.keys.length;
+    if ((uniq as { list_complete?: boolean }).list_complete === false) truncated = true;
 
-    // Active tenants (NEW)
-    const tenantUniq = await env.LEDGER.list({
-      prefix: `tlm:uniq:${day}:tenant:`,
-      limit: 1000,
-    });
+    // Active tenants
+    const tenantUniq = await withBudget(
+      env.LEDGER.list({ prefix: `tlm:uniq:${day}:tenant:`, limit: 1000 }),
+      STATS_DAY_BUDGET_MS,
+      EMPTY_LIST as unknown as Awaited<ReturnType<typeof env.LEDGER.list>>
+    );
     dayBucket.active_tenants = tenantUniq.keys.length;
 
     out[day] = dayBucket;
   }
 
-  // 7-day rolling unique IP count (NEW). Far more useful than summing per-day uniques
-  // because it correctly de-duplicates returning visitors.
-  const uniq7 = await env.LEDGER.list({ prefix: `tlm:uniq7:ip:`, limit: 1000 });
+  // 7-day rolling unique IP count. De-duplicates returning visitors.
+  const uniq7 = await withBudget(
+    env.LEDGER.list({ prefix: `tlm:uniq7:ip:`, limit: 1000 }),
+    STATS_DAY_BUDGET_MS,
+    EMPTY_LIST as unknown as Awaited<ReturnType<typeof env.LEDGER.list>>
+  );
   const totals_7d = {
     unique_ips_7d: uniq7.keys.length,
   };
 
-  return new Response(JSON.stringify({ days: out, totals_7d }, null, 2), {
-    status: 200,
-    headers: {
-      "content-type": "application/json",
-      "cache-control": "public, max-age=300",
-    },
-  });
+  return new Response(
+    JSON.stringify({ days: out, totals_7d, truncated, budget_ms: STATS_DAY_BUDGET_MS }, null, 2),
+    {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "cache-control": `public, max-age=${STATS_CACHE_TTL_S}, s-maxage=${STATS_CACHE_TTL_S}`,
+      },
+    }
+  );
 }
 
 /**

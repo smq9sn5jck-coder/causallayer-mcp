@@ -1,6 +1,6 @@
 {
   "name": "causallayer-mcp",
-  "version": "0.1.0",
+  "version": "0.3.1",
   "description": "Model Context Protocol server for CausalLayer — deterministic AI liability attribution with Bitcoin-anchored, signed certificates. Runs on Cloudflare Workers.",
   "private": false,
   "license": "MIT",
