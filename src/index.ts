@@ -43,6 +43,7 @@ import {
   type ToolName,
 } from "./billing.js";
 import { handleAdmin } from "./admin.js";
+import { logEvent } from "./events.js";
 import {
   buildRequestMeta,
   commitDemoUsage,
@@ -669,6 +670,7 @@ export default {
     ctx: ExecutionContext
   ): Promise<Response> {
     const url = new URL(request.url);
+    const t0 = Date.now();
 
     // CORS preflight — accept everything (it's a public demo).
     if (request.method === "OPTIONS") {
@@ -686,6 +688,13 @@ export default {
 
     // Liveness probe + directory listing
     if (url.pathname === "/healthz" || url.pathname === "/") {
+      // Event: app_opened — anyone hits the landing/health endpoint.
+      await logEvent("app_opened", request, env, ctx, {
+        request_path: url.pathname,
+        method: request.method,
+        response_status: 200,
+        duration_ms: Date.now() - t0,
+      });
       return json({
         name: "causallayer-mcp",
         version: "0.2.0",
@@ -709,17 +718,69 @@ export default {
 
     // Stripe webhook
     if (url.pathname === "/stripe/webhook" && request.method === "POST") {
-      return handleStripeWebhook(env, request);
+      const res = await handleStripeWebhook(env, request);
+      await logEvent(
+        res.status >= 400 ? "api_error" : "api_request",
+        request,
+        env,
+        ctx,
+        {
+          request_path: url.pathname,
+          method: request.method,
+          response_status: res.status,
+          duration_ms: Date.now() - t0,
+          error_message: res.status >= 400 ? `stripe_webhook_${res.status}` : undefined,
+        }
+      );
+      return res;
     }
 
     // Public demand-signal stats (anonymous, aggregated)
     if (url.pathname === "/stats") {
-      return handleStats(env);
+      const res = await handleStats(env);
+      await logEvent("api_request", request, env, ctx, {
+        request_path: url.pathname,
+        method: request.method,
+        response_status: res.status,
+        duration_ms: Date.now() - t0,
+      });
+      return res;
     }
 
     // Admin + /me
     if (url.pathname === "/me" || url.pathname.startsWith("/admin/")) {
-      return handleAdmin(env, request, url);
+      const res = await handleAdmin(env, request, url);
+      // Distinguish login_success / login_failed for /me
+      if (url.pathname === "/me") {
+        await logEvent(
+          res.status === 200 ? "login_success" : "login_failed",
+          request,
+          env,
+          ctx,
+          {
+            request_path: url.pathname,
+            method: request.method,
+            response_status: res.status,
+            duration_ms: Date.now() - t0,
+            error_message: res.status >= 400 ? `me_${res.status}` : undefined,
+          }
+        );
+      } else {
+        await logEvent(
+          res.status >= 400 ? "api_error" : "api_request",
+          request,
+          env,
+          ctx,
+          {
+            request_path: url.pathname,
+            method: request.method,
+            response_status: res.status,
+            duration_ms: Date.now() - t0,
+            error_message: res.status >= 400 ? `admin_${res.status}` : undefined,
+          }
+        );
+      }
+      return res;
     }
 
     // MCP endpoint — authenticate first, then hand off to the agent
@@ -748,6 +809,13 @@ export default {
           request.headers.get("Authorization")
         );
         if (!r) {
+          await logEvent("login_failed", request, env, ctx, {
+            request_path: url.pathname,
+            method: request.method,
+            response_status: 401,
+            duration_ms: Date.now() - t0,
+            error_message: "mcp_unauthorized",
+          });
           return json(
             {
               error: "unauthorized",
@@ -766,12 +834,39 @@ export default {
         };
       }
 
+      // Event: api_request for every /mcp POST. WebSocket-level
+      // connect/disconnect events are emitted from the McpAgent transport
+      // hooks above (see logSessionConnected / logSessionClosed) so we get
+      // both fetch-level and transport-level visibility.
+      await logEvent("api_request", request, env, ctx, {
+        request_path: url.pathname,
+        method: request.method,
+        tenant_id: tenantProps.tenant_id,
+        billing_mode: tenantProps.billing_mode,
+        duration_ms: Date.now() - t0,
+      });
+
       // Inject session-scoped props into the McpAgent.
       // Standard ExecutionContext does not type `props`, but the agents
       // runtime reads it from here (same mechanism used by OAuthProvider).
       (ctx as unknown as { props: Record<string, unknown> }).props =
         tenantProps as unknown as Record<string, unknown>;
       const mcpRes = await CausalLayerMCP.serve("/mcp").fetch(request, env, ctx);
+
+      // Event: api_error if /mcp itself returned a 4xx/5xx (not a JSON-RPC
+      // error inside a 200 — those are emitted from the tool wrappers).
+      if (mcpRes.status >= 400) {
+        await logEvent("api_error", request, env, ctx, {
+          request_path: url.pathname,
+          method: request.method,
+          response_status: mcpRes.status,
+          duration_ms: Date.now() - t0,
+          tenant_id: tenantProps.tenant_id,
+          billing_mode: tenantProps.billing_mode,
+          error_message: `mcp_http_${mcpRes.status}`,
+        });
+      }
+
       // Re-emit with CORS headers so browsers can call /mcp directly.
       const newHeaders = new Headers(mcpRes.headers);
       newHeaders.set("access-control-allow-origin", "*");
@@ -785,6 +880,14 @@ export default {
       });
     }
 
+    // 404: still log it so we can see scanner/probe traffic in stats.
+    await logEvent("api_error", request, env, ctx, {
+      request_path: url.pathname,
+      method: request.method,
+      response_status: 404,
+      duration_ms: Date.now() - t0,
+      error_message: "not_found",
+    });
     return json({ error: "not_found", path: url.pathname }, 404);
   },
 };
