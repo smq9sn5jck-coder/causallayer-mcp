@@ -7,7 +7,7 @@
   "vendor": "FaultKey Protocol",
   "license": "Apache-2.0",
   "repository": "https://github.com/smq9sn5jck-coder/causallayer-mcp",
-  "homepage": "https://faultkey.pages.dev",
+  "homepage": "https://faultkey.com",
   "endpoints": {
     "production": "https://mcp.faultkey.com/mcp",
     "demo": "https://mcp.faultkey.com/mcp"

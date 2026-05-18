@@ -31,8 +31,8 @@ Thanks for using **CausalLayer MCP**. Here is the right channel for each kind of
 | --- | --- |
 | `https://mcp.faultkey.com/healthz` | Is the demo Worker reachable? |
 | `https://mcp.faultkey.com/stats` | Aggregated demand telemetry, no PII. |
-| `https://faultkey.pages.dev/transparency` | Daily Merkle roots and Bitcoin anchor block heights. |
-| `https://faultkey.pages.dev/verify` | Drag-and-drop receipt verifier. |
+| `https://faultkey.com/transparency` | Daily Merkle roots and Bitcoin anchor block heights. |
+| `https://faultkey.com/verify` | Drag-and-drop receipt verifier. |
 
 ## Commercial support
 

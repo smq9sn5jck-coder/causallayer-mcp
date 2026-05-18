@@ -8,7 +8,7 @@ remote:
 metadata:
   name: "FaultKey · CausalLayer"
   description: "Deterministic AI-liability attribution. Issues signed, Bitcoin-anchored CausalCertificateV1 receipts with vendor/deployer/user fault splits for AI incidents. Closed-form scoring, byte-identical reproducibility, no LLMs in the scoring path."
-  homepage: "https://faultkey.pages.dev"
+  homepage: "https://faultkey.com"
   repository: "https://github.com/smq9sn5jck-coder/causallayer-mcp"
   license: "Apache-2.0"
   categories:
