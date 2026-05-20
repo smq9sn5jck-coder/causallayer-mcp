@@ -14,6 +14,10 @@
 [![security: ed25519](https://img.shields.io/badge/signing-Ed25519-181717)](./SECURITY.md)
 [![anchored: Bitcoin](https://img.shields.io/badge/anchor-Bitcoin%20%2B%20OpenTimestamps-f7931a?logo=bitcoin&logoColor=white)](https://opentimestamps.org)
 
+<p align="center">
+  <img src="./demo.svg" alt="FaultKey CausalLayer MCP — terminal demo showing liability attribution" width="820" />
+</p>
+
 > **Deterministic fault math for multi-party AI incidents.** When an AI causes harm and three parties argue over who pays, FaultKey returns a signed, Bitcoin-anchored certificate of fault allocation in under 200 ms — no LLM, no probabilistic scoring, no vendor cooperation needed for a third party to verify.
 
 This is the official [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for the [CausalLayer](https://github.com/smq9sn5jck-coder/causallayer) engine, packaged as a Cloudflare Worker. It lets AI agents (Claude Desktop, Cursor, Cline, Continue, Windsurf) call the four core liability-attribution tools without writing a single line of integration code.
