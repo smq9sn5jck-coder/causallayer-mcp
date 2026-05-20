@@ -1,11 +1,23 @@
 {
-  "name": "causallayer-mcp",
-  "version": "0.3.1",
-  "description": "Model Context Protocol server for CausalLayer — deterministic AI liability attribution with Bitcoin-anchored, signed certificates. Runs on Cloudflare Workers.",
+  "name": "@faultkey/causallayer-mcp",
+  "version": "0.4.0",
+  "description": "Model Context Protocol server for CausalLayer — deterministic AI liability attribution with Bitcoin-anchored, signed certificates. Runs on Cloudflare Workers or locally via npx.",
   "private": false,
   "license": "MIT",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "dist/standalone.js",
+  "bin": {
+    "causallayer-mcp": "./dist/standalone.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE",
+    "server.json"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "mcp",
     "model-context-protocol",
@@ -17,9 +29,13 @@
     "merkle-tree",
     "ed25519",
     "opentimestamps",
-    "cloudflare-workers"
+    "cloudflare-workers",
+    "deterministic",
+    "bitcoin-anchor",
+    "insurance",
+    "compliance"
   ],
-  "homepage": "https://github.com/smq9sn5jck-coder/causallayer-mcp",
+  "homepage": "https://faultkey.com",
   "repository": {
     "type": "git",
     "url": "https://github.com/smq9sn5jck-coder/causallayer-mcp.git"
@@ -28,6 +44,8 @@
     "url": "https://github.com/smq9sn5jck-coder/causallayer-mcp/issues"
   },
   "scripts": {
+    "build:npm": "esbuild src/standalone.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/standalone.js --banner:js=\"#!/usr/bin/env node\" --external:@modelcontextprotocol/sdk",
+    "prepublishOnly": "pnpm run build:npm",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "deploy:sandbox": "wrangler deploy --env sandbox",
@@ -46,6 +64,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240924.0",
     "@types/node": "^22.7.4",
+    "esbuild": "^0.25.0",
     "typescript": "^5.6.3",
     "vitest": "^4.1.6",
     "wrangler": "^4.92.0"
