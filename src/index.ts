@@ -687,6 +687,67 @@ export default {
       });
     }
 
+    // ─── Smithery / MCP registry server card ─────────────────────────────────
+    if (url.pathname === "/.well-known/mcp/server-card.json") {
+      return json({
+        serverInfo: {
+          name: "CausalLayer MCP",
+          version: "0.5.0",
+          description:
+            "Deterministic AI liability attribution engine. Given a structured incident " +
+            "description, returns a CausalCertificateV1: a signed, hash-chained, " +
+            "Bitcoin-anchored receipt allocating fault between AI vendor, deployer, and end-user.",
+          vendor: "FaultKey",
+          homepage: "https://faultkey.com",
+          repository: "https://github.com/smq9sn5jck-coder/causallayer-mcp",
+        },
+        authentication: { required: false },
+        tools: [
+          {
+            name: "submit_incident",
+            description:
+              "Submit a structured AI incident for deterministic liability attribution. " +
+              "Returns a CausalCertificateV1 with fault allocation, damages quantification, " +
+              "regulatory mapping, and insurance underwriting.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                title: { type: "string", description: "Short incident title" },
+                severity: { type: "string", enum: ["low", "medium", "high", "critical"] },
+                jurisdiction: { type: "string", description: "ISO country code" },
+                financial_impact_cents: { type: "number" },
+                agents: { type: "array", items: { type: "object" }, minItems: 1 },
+                events: { type: "array", items: { type: "object" }, minItems: 1 },
+                deterministic_only: { type: "boolean", const: true },
+              },
+              required: ["title", "agents", "events", "deterministic_only"],
+            },
+          },
+          {
+            name: "verify_certificate",
+            description: "Verify a CausalCertificate's Ed25519 signature and Merkle proof.",
+            inputSchema: {
+              type: "object",
+              properties: { certificate: { type: "object" } },
+              required: ["certificate"],
+            },
+          },
+          {
+            name: "get_anchor_status",
+            description: "Query the anchored decision ledger status.",
+            inputSchema: { type: "object", properties: { version: { type: "string" } } },
+          },
+          {
+            name: "query_issuer_registry",
+            description: "Query the trusted issuer registry.",
+            inputSchema: { type: "object", properties: { issuer_id: { type: "string" } } },
+          },
+        ],
+        resources: [],
+        prompts: [],
+      });
+    }
+
     // Liveness probe + directory listing
     if (url.pathname === "/healthz" || url.pathname === "/") {
       // Event: app_opened — anyone hits the landing/health endpoint.
