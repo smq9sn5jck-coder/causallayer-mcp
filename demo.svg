@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 520" width="820" height="520">
+<style>
+  .term { font-family: "JetBrains Mono", "Fira Code", "SF Mono", monospace; font-size: 13px; }
+  .title { font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 12px; fill: #8b949e; }
+</style>
+<rect width="820" height="520" rx="8" fill="#0d1117" />
+<rect width="820" height="32" rx="8" fill="#161b22" />
+<rect x="0" y="24" width="820" height="8" fill="#161b22" />
+<circle cx="20" cy="16" r="6" fill="#f85149" opacity="0.8" />
+<circle cx="40" cy="16" r="6" fill="#e3b341" opacity="0.8" />
+<circle cx="60" cy="16" r="6" fill="#56d364" opacity="0.8" />
+<text x="410.0" y="20" text-anchor="middle" class="title">faultkey — causallayer-mcp</text>
+<g>
+<text x="16" y="50" class="term"><tspan fill="#56d364">$ </tspan><tspan fill="#c9d1d9">curl -X POST https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp \</tspan></text>
+<text x="16" y="70" class="term"><tspan fill="#c9d1d9">    -H 'Content-Type: application/json' \</tspan></text>
+<text x="16" y="90" class="term"><tspan fill="#c9d1d9">    -d '{&quot;jsonrpc&quot;:&quot;2.0&quot;,&quot;id&quot;:1,&quot;method&quot;:&quot;tools/call&quot;,</tspan></text>
+<text x="16" y="110" class="term"><tspan fill="#c9d1d9">         &quot;params&quot;:{&quot;name&quot;:&quot;submit_incident&quot;,&quot;arguments&quot;:{</tspan></text>
+<text x="16" y="130" class="term"><tspan fill="#c9d1d9">           &quot;title&quot;:&quot;AI trading bot lost $4.2M&quot;,</tspan></text>
+<text x="16" y="150" class="term"><tspan fill="#c9d1d9">           &quot;severity&quot;:&quot;critical&quot;,&quot;jurisdiction&quot;:&quot;US&quot;}}}'</tspan></text>
+<text x="16" y="170" class="term"></text>
+<text x="16" y="190" class="term"><tspan x="16" fill="#6e7681" font-weight="normal">{</tspan></text>
+<text x="16" y="210" class="term"><tspan x="16" fill="#c9d1d9" font-weight="normal">  </tspan><tspan x="32.8" fill="#56d364" font-weight="normal">&quot;result&quot;</tspan><tspan x="100.0" fill="#6e7681" font-weight="normal">:</tspan><tspan x="108.4" fill="#c9d1d9" font-weight="normal"> {</tspan></text>
+<text x="16" y="230" class="term"><tspan x="16" fill="#c9d1d9" font-weight="normal">    </tspan><tspan x="49.6" fill="#79c0ff" font-weight="normal">&quot;verdict&quot;</tspan><tspan x="125.20000000000002" fill="#c9d1d9" font-weight="normal">: </tspan><tspan x="142.00000000000003" fill="#e3b341" font-weight="normal">&quot;primary_fault_deployer&quot;</tspan><tspan x="343.6" fill="#c9d1d9" font-weight="normal">,</tspan></text>
+<text x="16" y="250" class="term"><tspan x="16" fill="#c9d1d9" font-weight="normal">    </tspan><tspan x="49.6" fill="#79c0ff" font-weight="normal">&quot;liability&quot;</tspan><tspan x="142.0" fill="#c9d1d9" font-weight="normal">: {</tspan></text>
+<text x="16" y="270" class="term"><tspan x="16" fill="#c9d1d9" font-weight="normal">      </tspan><tspan x="66.4" fill="#56d4dd" font-weight="normal">&quot;QuantEdge Capital&quot;</tspan><tspan x="226.0" fill="#c9d1d9" font-weight="normal">: </tspan><tspan x="242.8" fill="#f85149" font-weight="bold">52%</tspan><tspan x="268.0" fill="#c9d1d9" font-weight="normal">, </tspan><tspan x="284.8" fill="#56d4dd" font-weight="normal">&quot;Anthropic&quot;</tspan><tspan x="377.20000000000005" fill="#c9d1d9" font-weight="normal">: </tspan><tspan x="394.00000000000006" fill="#f85149" font-weight="bold">38%</tspan><tspan x="419.20000000000005" fill="#c9d1d9" font-weight="normal">, </tspan><tspan x="436.00000000000006" fill="#56d4dd" font-weight="normal">&quot;Risk Desk&quot;</tspan><tspan x="528.4000000000001" fill="#c9d1d9" font-weight="normal">: </tspan><tspan x="545.2" fill="#f85149" font-weight="bold">10%</tspan></text>
+<text x="16" y="290" class="term"><tspan x="16" fill="#c9d1d9" font-weight="normal">    },</tspan></text>
+<text x="16" y="310" class="term"><tspan x="16" fill="#c9d1d9" font-weight="normal">    </tspan><tspan x="49.6" fill="#79c0ff" font-weight="normal">&quot;scoring_modules&quot;</tspan><tspan x="192.4" fill="#c9d1d9" font-weight="normal">: </tspan><tspan x="209.20000000000002" fill="#6e7681" font-weight="normal">[16 modules · 87ms]</tspan><tspan x="368.8" fill="#c9d1d9" font-weight="normal">,</tspan></text>
+<text x="16" y="330" class="term"><tspan x="16" fill="#c9d1d9" font-weight="normal">    </tspan><tspan x="49.6" fill="#79c0ff" font-weight="normal">&quot;certificate&quot;</tspan><tspan x="158.8" fill="#c9d1d9" font-weight="normal">: {</tspan></text>
+<text x="16" y="350" class="term"><tspan x="16" fill="#c9d1d9" font-weight="normal">      </tspan><tspan x="66.4" fill="#79c0ff" font-weight="normal">&quot;signature&quot;</tspan><tspan x="158.8" fill="#c9d1d9" font-weight="normal">: </tspan><tspan x="175.60000000000002" fill="#56d364" font-weight="normal">&quot;ed25519:7f3a9b2c...&quot;</tspan><tspan x="352.0" fill="#c9d1d9" font-weight="normal">,</tspan></text>
+<text x="16" y="370" class="term"><tspan x="16" fill="#c9d1d9" font-weight="normal">      </tspan><tspan x="66.4" fill="#79c0ff" font-weight="normal">&quot;btc_anchor&quot;</tspan><tspan x="167.20000000000002" fill="#c9d1d9" font-weight="normal">: </tspan><tspan x="184.00000000000003" fill="#e3b341" font-weight="normal">#896,412</tspan></text>
+<text x="16" y="390" class="term"><tspan x="16" fill="#c9d1d9" font-weight="normal">    }</tspan></text>
+<text x="16" y="410" class="term"><tspan x="16" fill="#c9d1d9" font-weight="normal">  }</tspan></text>
+<text x="16" y="430" class="term"><tspan x="16" fill="#6e7681" font-weight="normal">}</tspan></text>
+<text x="16" y="470" class="term"><tspan x="16" fill="#56d364" font-weight="normal">✓</tspan><tspan x="24.4" fill="#c9d1d9" font-weight="normal"> Certificate issued in </tspan><tspan x="217.60000000000002" fill="#c9d1d9" font-weight="bold">87ms</tspan><tspan x="251.20000000000002" fill="#c9d1d9" font-weight="normal"> · Ed25519 signed · BTC block </tspan><tspan x="503.20000000000005" fill="#e3b341" font-weight="normal">#896,412</tspan></text>
+<rect x="16" y="477" width="8" height="16" fill="#56d364">
+  <animate attributeName="opacity" values="1;0;1" dur="1.2s" repeatCount="indefinite" />
+</rect>
+</g>
+</svg>
