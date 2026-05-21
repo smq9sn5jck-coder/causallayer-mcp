@@ -686,6 +686,11 @@ export default {
         },
       });
     }
+    // ─── Interactive demo page ───────────────────────────────────────────────
+    if (url.pathname === "/try" && request.method === "GET") {
+      const { serveTryPage } = await import("./try-page.js");
+      return serveTryPage(request, env);
+    }
 
     // ─── Smithery / MCP registry server card ─────────────────────────────────
     if (url.pathname === "/.well-known/mcp/server-card.json") {
