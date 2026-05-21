@@ -56,6 +56,8 @@ function hashInt(hash: string, offset: number, min: number, max: number): number
   return min + (n % (max - min + 1));
 }
 
+import { applyEuRuleSet, euGateEngages, RULE_SET_VERSION as EU_RULE_SET_VERSION, type EuActor, type EuRuleFlags } from "./eu-rules.js";
+
 // ─── Input-sensitive scoring logic ─────────────────────────────────────────
 const SEVERITY_WEIGHTS: Record<string, number> = {
   critical: 0.92,
@@ -207,6 +209,45 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
           share: +((weights[i]! / totalWeight) * remainingShare).toFixed(3),
         });
       });
+    }
+
+    // ── Apply EU rule-set if jurisdiction + trigger gates engage ───────────
+    const euFlagsRaw = (body.eu_flags as Record<string, unknown> | undefined) ?? {};
+    const euFlags: EuRuleFlags = {
+      high_risk_ai: Boolean(euFlagsRaw.high_risk_ai),
+      pld_compensable_damage: Boolean(euFlagsRaw.pld_compensable_damage),
+      deployer_used_contrary_to_instructions: Boolean(euFlagsRaw.deployer_used_contrary_to_instructions),
+      human_oversight_unassigned_or_unqualified: Boolean(euFlagsRaw.human_oversight_unassigned_or_unqualified),
+      human_oversight_nominally_assigned_not_present: Boolean(euFlagsRaw.human_oversight_nominally_assigned_not_present),
+      deployer_input_data_unrepresentative: Boolean(euFlagsRaw.deployer_input_data_unrepresentative),
+      deployer_ignored_risk_signal: Boolean(euFlagsRaw.deployer_ignored_risk_signal),
+      deployer_failed_serious_incident_notification: Boolean(euFlagsRaw.deployer_failed_serious_incident_notification),
+      deployer_destroyed_logs: Boolean(euFlagsRaw.deployer_destroyed_logs),
+      deployer_employer_no_worker_notice: Boolean(euFlagsRaw.deployer_employer_no_worker_notice),
+      deployer_public_authority_unregistered: Boolean(euFlagsRaw.deployer_public_authority_unregistered),
+      provider_failed_to_supply_instructions: Boolean(euFlagsRaw.provider_failed_to_supply_instructions),
+      provider_breach_was_unforeseeable: Boolean(euFlagsRaw.provider_breach_was_unforeseeable),
+      ai_is_opaque_black_box: Boolean(euFlagsRaw.ai_is_opaque_black_box),
+      defendant_failed_disclosure_order: Boolean(euFlagsRaw.defendant_failed_disclosure_order),
+      substantial_modification_present: Boolean(euFlagsRaw.substantial_modification_present),
+      substantial_modification_severity: typeof euFlagsRaw.substantial_modification_severity === "number"
+        ? (euFlagsRaw.substantial_modification_severity as number)
+        : undefined,
+    };
+
+    let euOverlay: ReturnType<typeof applyEuRuleSet> | null = null;
+    let ruleSetVersion: string = "global-v0";
+    if (euGateEngages(jurisdiction, euFlags)) {
+      const euActors: EuActor[] = agents.map((a) => ({
+        id: a.id,
+        type: (a.type ?? "third_party") as EuActor["type"],
+        eu_resident: typeof (a as unknown as Record<string, unknown>).eu_resident === "boolean" ? Boolean((a as unknown as Record<string, unknown>).eu_resident) : true,
+      }));
+      const attributableMap: Record<string, number> = {};
+      attributableMap[primaryAgent.id] = primaryScore;
+      for (const s of secondaryShares) attributableMap[s.party] = s.share;
+      euOverlay = applyEuRuleSet({ attributable: attributableMap, actors: euActors, flags: euFlags });
+      ruleSetVersion = EU_RULE_SET_VERSION;
     }
 
     // Determine verdict kind
@@ -459,6 +500,8 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
         regulatoryAlignment: hashFloat(hash, 34, 0.2, 0.8),
         weights: { causalProximity: 0.30, behaviouralDeviation: 0.30, controllability: 0.20, regulatoryAlignment: 0.20 },
       },
+      ruleSetVersion,
+      euRuleOverlay: euOverlay,
       crossCaseCalibration: {
         adjustmentAppliedPP: hashFloat(hash, 36, -0.08, 0.08),
         categoryProfile: category,
