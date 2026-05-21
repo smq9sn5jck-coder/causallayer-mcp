@@ -4,9 +4,11 @@ export default {
     const cors = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"POST,GET,OPTIONS","Access-Control-Allow-Headers":"content-type"};
     if (request.method === "OPTIONS") return new Response(null, {status:204, headers:cors});
     
-    if (url.pathname === "/api/run") return handleRun(request, cors);
-    if (url.pathname === "/api/pdf") return handlePdf(request, cors);
-    if (url.pathname === "/api/analytics") return handleAnalytics(request, cors);
+    // Support both legacy paths (when accessed via *.workers.dev directly)
+    // and namespaced /try/api/* paths (when routed under faultkey.com/try*)
+    if (url.pathname === "/api/run" || url.pathname === "/try/api/run") return handleRun(request, cors);
+    if (url.pathname === "/api/pdf" || url.pathname === "/try/api/pdf") return handlePdf(request, cors);
+    if (url.pathname === "/api/analytics" || url.pathname === "/try/api/analytics") return handleAnalytics(request, cors);
     if (url.pathname === "/try" || url.pathname === "/try/" || url.pathname === "/") {
       return new Response(HTML, {headers:{"Content-Type":"text/html;charset=utf-8","Cache-Control":"public, max-age=3600"}});
     }
@@ -476,6 +478,11 @@ var S = [
 var sel = S[0];
 var lastResult = null;
 var prevResult = null;
+
+// Auto-detect API base path so the same Worker code works on both:
+//   - faultkey.com/try (routed via CF Route, API at /try/api/*)
+//   - faultkey-try-demo.zykm9qkk7j.workers.dev/try (direct, API at /api/*)
+var API_BASE = (location.pathname.indexOf("/try") === 0 && location.hostname !== "faultkey-try-demo.zykm9qkk7j.workers.dev") ? "/try" : "";
 var isCustom = false;
 var customArgs = null;
 
@@ -685,7 +692,7 @@ async function go() {
     lg("Initializing deterministic scoring engine...", "info");
     lg("Input: " + args.title, "info");
     
-    var r = await fetch("/api/run", {
+    var r = await fetch(API_BASE + "/api/run", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({arguments: args})
@@ -804,7 +811,7 @@ function compare() {
 // ═══════════════════════════════════════════════════════════════
 function getPdf() {
   if (!lastResult) return;
-  fetch("/api/pdf", {
+  fetch(API_BASE + "/api/pdf", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({certificate: lastResult})
@@ -835,7 +842,7 @@ function copyJson() {
 // ═══════════════════════════════════════════════════════════════
 function analytics(event, meta) {
   try {
-    fetch("/api/analytics", {
+    fetch(API_BASE + "/api/analytics", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({event:event, ...meta, ts:Date.now()})

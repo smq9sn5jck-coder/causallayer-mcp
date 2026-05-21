@@ -8,5 +8,17 @@
   "compatibility_date": "2025-01-01",
   "observability": {
     "enabled": true
-  }
+  },
+  "routes": [
+    // All demo traffic lives under /try* — single namespace, zero risk of
+    // colliding with the main faultkey.com SPA or any other future API routes
+    {
+      "pattern": "faultkey.com/try",
+      "zone_name": "faultkey.com"
+    },
+    {
+      "pattern": "faultkey.com/try/*",
+      "zone_name": "faultkey.com"
+    }
+  ]
 }
