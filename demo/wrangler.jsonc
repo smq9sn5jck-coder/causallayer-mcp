@@ -1,0 +1,12 @@
+{
+  // Cloudflare Worker config for faultkey-try-demo
+  // Standalone demo Worker - separate from the main causallayer-mcp Worker
+  // Auto-deploys on push to main via GitHub integration (Root directory: demo)
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "faultkey-try-demo",
+  "main": "try-worker.js",
+  "compatibility_date": "2025-01-01",
+  "observability": {
+    "enabled": true
+  }
+}
