@@ -1,0 +1,29 @@
+{
+  "name": "causallayer-mcp",
+  "version": "0.2.0",
+  "description": "Deterministic AI liability attribution engine — causal chain analysis, 16-module scoring, cryptographic certificates",
+  "transport": {
+    "type": "streamable-http",
+    "url": "https://mcp.faultkey.com/mcp"
+  },
+  "tools": [
+    {
+      "name": "submit_incident",
+      "description": "Submit an AI incident for causal analysis and liability attribution"
+    },
+    {
+      "name": "verify_certificate",
+      "description": "Verify the cryptographic integrity of a CausalCertificate"
+    },
+    {
+      "name": "get_anchor_status",
+      "description": "Check the anchoring status of a certificate hash"
+    },
+    {
+      "name": "query_issuer_registry",
+      "description": "Query the issuer registry for known AI system operators"
+    }
+  ],
+  "repository": "https://github.com/smq9sn5jck-coder/causallayer-mcp",
+  "license": "BSL-1.1"
+}
