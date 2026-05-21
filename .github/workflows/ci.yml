@@ -69,11 +69,22 @@ jobs:
       - name: Probe tools/list
         run: |
           set -e
-          RESP=$(curl -sS -X POST "https://mcp.faultkey.com/mcp" \
+          MCP_URL="https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp"
+          # Step 1: Initialize and capture session ID
+          SESSION_ID=$(curl -sS -D- -X POST "$MCP_URL" \
             -H "Content-Type: application/json" \
             -H "Accept: application/json, text/event-stream" \
             --max-time 10 \
-            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
+            -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"ci-test","version":"1.0"}}}' \
+            -o /dev/null 2>/dev/null | grep -i "^mcp-session-id:" | sed 's/[Mm]cp-[Ss]ession-[Ii]d: //;s/\r//')
+          echo "Session: $SESSION_ID"
+          # Step 2: tools/list with session
+          RESP=$(curl -sS -X POST "$MCP_URL" \
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json, text/event-stream" \
+            -H "Mcp-Session-Id: $SESSION_ID" \
+            --max-time 10 \
+            -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}')
           echo "$RESP" | head -c 600
           echo ""
           echo "$RESP" | grep -q "submit_incident" && echo "  ✓ submit_incident exposed"
