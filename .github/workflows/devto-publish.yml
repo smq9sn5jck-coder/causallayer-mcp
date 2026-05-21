@@ -1,0 +1,31 @@
+name: Publish to Dev.to
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish immediately (true/false)'
+        required: true
+        default: 'false'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Publish article
+        env:
+          DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
+        run: |
+          BODY=$(cat docs/blog/deterministic-attribution.md)
+          
+          curl -s -X POST "https://dev.to/api/articles" \
+            -H "api-key: $DEVTO_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+              --arg title 'How We Built Deterministic AI Liability Attribution Without LLMs' \
+              --arg body \"$BODY\" \
+              --argjson published ${{ github.event.inputs.publish }} \
+              '{article: {title: $title, body_markdown: $body, published: $published, tags: [\"ai\", \"compliance\", \"typescript\", \"cloudflare\"], canonical_url: \"https://faultkey.com/blog/deterministic-attribution\", series: \"Building FaultKey\"}}'
+            )"
