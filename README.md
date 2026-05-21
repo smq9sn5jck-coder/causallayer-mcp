@@ -7,7 +7,7 @@
 [![npm version](https://img.shields.io/npm/v/causallayer-mcp.svg)](https://www.npmjs.com/package/causallayer-mcp)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
 [![Model Context Protocol](https://img.shields.io/badge/MCP-Ready-green)](https://modelcontextprotocol.io/)
-[![Live Demo](https://img.shields.io/badge/demo-live-success)](https://mcp.faultkey.com/healthz)
+[![Live Demo](https://img.shields.io/badge/demo-live-success)](https://faultkey-try-demo.zykm9qkk7j.workers.dev/try)
 [![GitHub Stars](https://img.shields.io/github/stars/smq9sn5jck-coder/causallayer-mcp?style=flat&logo=github)](https://github.com/smq9sn5jck-coder/causallayer-mcp/stargazers)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![OpenAPI](https://img.shields.io/badge/OpenAPI-3.1-85ea2d?logo=openapiinitiative&logoColor=white)](./openapi.yaml)
@@ -24,11 +24,13 @@ This is the official [Model Context Protocol (MCP)](https://modelcontextprotocol
 
 ## Live demo
 
+> **🎮 [Try the Interactive Demo](https://faultkey-try-demo.zykm9qkk7j.workers.dev/try)** — No setup required. Pick a scenario, click "Run Analysis", see real-time liability attribution.
+
 The public Worker is deployed on Cloudflare's global edge network and is fully functional in standalone demo mode (deterministic responses, watermarked, rate-limited 5 calls / IP / day):
 
 - **Endpoint:** `https://mcp.faultkey.com/mcp` (live, custom domain) 
 - **Mirror:** `https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp`
-- **Healthcheck:** [`/healthz`](https://mcp.faultkey.com/healthz)
+- **Healthcheck:** [`/healthz`](https://faultkey-try-demo.zykm9qkk7j.workers.dev/try)
 - **Demand telemetry:** [`/stats`](https://mcp.faultkey.com/stats) (public, aggregated, no PII)
 
 ## Quick start
