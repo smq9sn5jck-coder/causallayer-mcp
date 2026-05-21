@@ -114,7 +114,13 @@
         "PRICE_SUBMIT_INCIDENT": "50",
         "PRICE_VERIFY_CERTIFICATE": "1",
         "PRICE_GET_ANCHOR_STATUS": "0",
-        "PRICE_QUERY_ISSUER_REGISTRY": "0"
+        "PRICE_QUERY_ISSUER_REGISTRY": "0",
+        // Demo rate-limit overrides. Bumped from defaults (5/50/1000) to give
+        // real visitors of faultkey.com/try room to evaluate the engine without
+        // hitting the daily cap on the first or second try. See src/demo.ts.
+        "DEMO_DAILY_PER_IP_SUBMIT": "50",
+        "DEMO_DAILY_PER_IP_VERIFY": "200",
+        "DEMO_DAILY_GLOBAL_SUBMIT": "5000"
       }
     },
     "sandbox": {
