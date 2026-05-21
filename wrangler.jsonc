@@ -78,7 +78,15 @@
     "PRICE_SUBMIT_INCIDENT": "50",
     "PRICE_VERIFY_CERTIFICATE": "1",
     "PRICE_GET_ANCHOR_STATUS": "0",
-    "PRICE_QUERY_ISSUER_REGISTRY": "0"
+    "PRICE_QUERY_ISSUER_REGISTRY": "0",
+    // Demo rate-limit overrides (mirrored into env.demo.vars below).
+    // Defaults in src/demo.ts are 5/50/1000 — too tight for a public demo where
+    // visitors hit the cap on their second submit. Bumping to 50/200/5000 so a
+    // real evaluator can run a handful of scenarios without seeing the
+    // DEMO_RATE_LIMITED card. Tune via env vars without code changes.
+    "DEMO_DAILY_PER_IP_SUBMIT": "50",
+    "DEMO_DAILY_PER_IP_VERIFY": "200",
+    "DEMO_DAILY_GLOBAL_SUBMIT": "5000"
   },
 
   "env": {
