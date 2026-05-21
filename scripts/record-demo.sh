@@ -1,89 +1,143 @@
-#!/bin/bash
-# Record a terminal demo of CausalLayer MCP
-# Prerequisites: 
-#   brew install asciinema (or apt install asciinema)
-#   cargo install agg (for GIF conversion)
-#   OR: npm install -g svg-term-cli (for SVG)
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────────────────
+# record-demo.sh — Record a terminal demo of CausalLayer MCP in action
+#
+# Prerequisites:
+#   brew install asciinema    (or apt install asciinema)
+#   cargo install agg         (or npm install -g svg-term-cli for SVG)
+#
+# Usage:
+#   ./scripts/record-demo.sh           # Records + converts to GIF
+#   ./scripts/record-demo.sh --svg     # Records + converts to SVG (for README)
+#
+# Output:
+#   docs/demo.gif  or  docs/demo.svg
+# ─────────────────────────────────────────────────────────────────────────────
+set -euo pipefail
 
-set -e
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+OUTPUT_DIR="$ROOT_DIR/docs"
+CAST_FILE="$OUTPUT_DIR/demo.cast"
+FORMAT="${1:-gif}"
 
-RECORDING="/tmp/causallayer-demo.cast"
-GIF_OUTPUT="./docs/demo.gif"
-SVG_OUTPUT="./docs/demo.svg"
+mkdir -p "$OUTPUT_DIR"
 
-echo "🎬 Recording CausalLayer demo..."
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  CausalLayer MCP Demo Recorder                              ║"
+echo "║  This will record a scripted terminal session.              ║"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
 
-# Create the demo script
-cat > /tmp/demo-script.sh << 'DEMO'
-#!/bin/bash
-echo "$ npx @faultkey/causallayer-mcp --demo"
+# Create the demo script that simulates a real interaction
+cat > "$OUTPUT_DIR/.demo-script.sh" << 'DEMO'
+#!/usr/bin/env bash
+type_slow() {
+  local text="$1"
+  for (( i=0; i<${#text}; i++ )); do
+    printf '%s' "${text:$i:1}"
+    sleep 0.04
+  done
+  echo ""
+}
+
+clear
+echo ""
+printf '\033[1;37m'
+echo "  ╔═══════════════════════════════════════════════════════════╗"
+echo "  ║  CausalLayer MCP — Deterministic AI Liability Attribution ║"
+echo "  ╚═══════════════════════════════════════════════════════════╝"
+printf '\033[0m'
+echo ""
 sleep 1
-echo ""
-echo "🔗 CausalLayer MCP v1.0.0"
-echo "   Endpoint: mcp.faultkey.com"
-echo "   Protocol: MCP 2025-03-26"
-echo ""
-sleep 1.5
-echo "$ # Submit an AI decision for certification"
+
+printf '\033[0;90m# Step 1: Initialize MCP session with mcp.faultkey.com\033[0m\n'
 sleep 0.5
-echo '$ mcp call submit_incident \'
-echo '    --agent-id "gpt-4o-2026-05" \'
-echo '    --decision-type "loan-approval" \'
-echo '    --jurisdiction "EU-AI-ACT-ART14"'
+type_slow '$ curl -s -X POST https://mcp.faultkey.com/mcp \'
+type_slow '    -H "Content-Type: application/json" \'
+type_slow '    -d {"jsonrpc":"2.0","method":"initialize",...}'
+sleep 0.8
+printf '\033[0;32m✓ Session established: 4980470cc7bf...\033[0m\n'
+echo ""
+sleep 1
+
+printf '\033[0;90m# Step 2: Submit AI incident for deterministic liability scoring\033[0m\n'
+sleep 0.5
+type_slow '$ curl -s -X POST https://mcp.faultkey.com/mcp \'
+type_slow '    -H "Mcp-Session-Id: 4980470cc7bf..." \'
+type_slow '    -d {"method":"tools/call","params":{"name":"submit_incident",...}}'
 sleep 2
 echo ""
-echo "✅ Certificate anchored"
+printf '\033[1;37m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m\n'
+printf '\033[1;37m  CAUSAL CERTIFICATE V1\033[0m\n'
+printf '\033[1;37m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m\n'
 echo ""
-echo "  anchor_id:    anc_7f3k9x2m"
-echo "  chain_hash:   sha256:e4f5g6h7..."
-echo "  prev_anchor:  sha256:b2c3d4e5..."
-echo "  timestamp:    2026-05-21T09:15:33.127Z"
-echo "  jurisdiction: EU-AI-ACT-ART14"
-echo "  status:       SEALED"
-echo "  latency:      12ms"
+printf '  \033[1;31mVERDICT:\033[0m  THIRD_PARTY_DATA_PROVIDER_AT_FAULT\n'
 echo ""
-sleep 2
-echo "$ # Verify the certificate chain"
-echo '$ mcp call get_anchor_status --anchor-id "anc_7f3k9x2m"'
-sleep 1.5
+printf '  \033[1;37mLIABILITY:\033[0m\n'
+printf '  \033[31m████████████████████████████████████████████\033[0m 88%% Anthropic Claude 3.5\n'
+printf '  \033[37m███\033[0m 6%% National Credit Corp\n'
+printf '  \033[34m███\033[0m 6%% Loan Officer\n'
 echo ""
-echo "✅ Chain integrity: VALID"
-echo "   Chain depth:  847 anchors"
-echo "   Broken links: 0"
-echo "   Verified in:  3ms"
+printf '  \033[1;37mDAMAGES:\033[0m  $41,303.90 AUD\n'
+echo ""
+printf '  \033[1;37mREGULATORY:\033[0m  EU AI Act Art.26 · APRA CPS 230 · NSW AI Framework\n'
+echo ""
+printf '  \033[1;37mCRYPTO:\033[0m  ed25519 | did:web:faultkey.com#demo-issuer\n'
+printf '\033[1;37m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m\n'
 echo ""
 sleep 2
-echo "$ # No LLM called. Fully deterministic. 12ms total."
+
+printf '\033[0;32m✓ Generated in 2.4s — deterministic, no LLM in scoring path\033[0m\n'
+printf '\033[0;90m  Same input → same output. Every time. Verifiable in 30 lines of Node.js.\033[0m\n'
+echo ""
 sleep 2
 DEMO
-chmod +x /tmp/demo-script.sh
 
-# Record
-asciinema rec "$RECORDING" \
-  --command "bash /tmp/demo-script.sh" \
-  --title "CausalLayer MCP — Deterministic AI Liability Attribution" \
-  --idle-time-limit 3 \
-  --cols 72 \
-  --rows 20
+chmod +x "$OUTPUT_DIR/.demo-script.sh"
 
-echo ""
-echo "Converting to GIF..."
-
-# Try agg first (better quality)
-if command -v agg &> /dev/null; then
-  agg "$RECORDING" "$GIF_OUTPUT" --cols 72 --rows 20 --speed 1.2
-  echo "✅ GIF: $GIF_OUTPUT"
-fi
-
-# Also try svg-term (works in README directly)
-if command -v svg-term &> /dev/null; then
-  svg-term --cast "$RECORDING" --out "$SVG_OUTPUT" --window --width 72 --height 20
-  echo "✅ SVG: $SVG_OUTPUT"
-fi
+# Record with asciinema
+echo "Recording demo..."
+asciinema rec "$CAST_FILE" \
+  --command "$OUTPUT_DIR/.demo-script.sh" \
+  --title "CausalLayer MCP — AI Liability Attribution" \
+  --cols 80 \
+  --rows 28 \
+  --overwrite \
+  --idle-time-limit 3
 
 echo ""
+echo "Recording complete: $CAST_FILE"
+
+# Convert based on format
+if [[ "$FORMAT" == "--svg" || "$FORMAT" == "svg" ]]; then
+  echo "Converting to SVG..."
+  if command -v svg-term &> /dev/null; then
+    svg-term --in "$CAST_FILE" --out "$OUTPUT_DIR/demo.svg" --window --width 80 --height 28
+    echo "✓ Output: $OUTPUT_DIR/demo.svg"
+  else
+    echo "⚠ svg-term-cli not found. Install: npm install -g svg-term-cli"
+    echo "  Then: svg-term --in $CAST_FILE --out $OUTPUT_DIR/demo.svg --window"
+  fi
+else
+  echo "Converting to GIF..."
+  if command -v agg &> /dev/null; then
+    agg "$CAST_FILE" "$OUTPUT_DIR/demo.gif" --font-size 14 --theme monokai --speed 1.5
+    echo "✓ Output: $OUTPUT_DIR/demo.gif"
+  else
+    echo "⚠ agg not found. Install: cargo install agg"
+    echo "  Then: agg $CAST_FILE $OUTPUT_DIR/demo.gif --font-size 14 --theme monokai"
+    echo ""
+    echo "Alt: Upload $CAST_FILE to https://asciinema.org for web embed"
+  fi
+fi
+
+rm -f "$OUTPUT_DIR/.demo-script.sh"
+
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Add to README.md:"
-echo '  ![Demo](./docs/demo.gif)'
-echo ""
-echo "Or for SVG (sharper, smaller file):"
-echo '  ![Demo](./docs/demo.svg)'
+echo '  ![Demo](docs/demo.gif)'
+echo "Or embed asciinema:"
+echo '  [![asciicast](https://asciinema.org/a/XXXXX.svg)](https://asciinema.org/a/XXXXX)'
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
