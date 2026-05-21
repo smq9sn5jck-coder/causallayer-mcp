@@ -1,0 +1,40 @@
+name: Announce Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Post to Dev.to
+        if: env.DEVTO_API_KEY != ''
+        env:
+          DEVTO_API_KEY: ${{ secrets.DEVTO_API_KEY }}
+        run: |
+          curl -s -X POST "https://dev.to/api/articles" \
+            -H "api-key: $DEVTO_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "article": {
+                "title": "CausalLayer ${{ github.event.release.tag_name }} Released",
+                "body_markdown": "${{ github.event.release.body }}",
+                "published": true,
+                "tags": ["ai", "compliance", "mcp", "typescript"]
+              }
+            }'
+      
+      - name: Create Discussion Announcement
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: 33
+          body: |
+            ## 🚀 ${{ github.event.release.tag_name }} Released!
+            
+            ${{ github.event.release.body }}
+            
+            [View Release](${{ github.event.release.html_url }})
