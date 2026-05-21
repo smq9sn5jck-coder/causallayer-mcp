@@ -1,11 +1,12 @@
 export default {
   async fetch(request) {
     const url = new URL(request.url);
-    const cors = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"POST,OPTIONS","Access-Control-Allow-Headers":"content-type"};
+    const cors = {"Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"POST,GET,OPTIONS","Access-Control-Allow-Headers":"content-type"};
     if (request.method === "OPTIONS") return new Response(null, {status:204, headers:cors});
     
     if (url.pathname === "/api/run") return handleRun(request, cors);
     if (url.pathname === "/api/pdf") return handlePdf(request, cors);
+    if (url.pathname === "/api/analytics") return handleAnalytics(request, cors);
     if (url.pathname === "/try" || url.pathname === "/try/" || url.pathname === "/") {
       return new Response(HTML, {headers:{"Content-Type":"text/html;charset=utf-8","Cache-Control":"public, max-age=3600"}});
     }
@@ -37,9 +38,6 @@ function deterministicScore(args) {
   });
 
   // Step 2: Apply causal contribution weights
-  // - Position weight: later events get higher weight (last-clear-chance doctrine)
-  // - Type weight: certain event types carry more causal significance
-  // - Role weight: different operator roles have different duty-of-care levels
   const typeWeights = {
     inference: 3.0, data_retrieval: 2.5, auto_rejection: 2.8,
     human_review: 1.5, human_override_missed: 2.0, human_intervention_missed: 2.2,
@@ -49,10 +47,10 @@ function deterministicScore(args) {
   };
   
   const roleWeights = {
-    provider: 2.5,    // AI provider has highest duty
-    deployer: 1.8,    // Deployer has oversight duty
-    vendor: 2.0,      // Third-party data vendor
-    user: 1.0         // End user / operator
+    provider: 2.5,
+    deployer: 1.8,
+    vendor: 2.0,
+    user: 1.0
   };
 
   const totalEvents = events.length;
@@ -62,24 +60,16 @@ function deterministicScore(args) {
     let weight = 0;
     
     actor.events.forEach(ev => {
-      // Position factor: events later in chain get 1.0 + (position / total) * 1.5
       const positionFactor = 1.0 + (ev.position / Math.max(totalEvents - 1, 1)) * 1.5;
-      
-      // Type factor
       const typeFactor = typeWeights[ev.type] || typeWeights.default;
-      
-      // Role factor
       const roleFactor = roleWeights[actor.agent.operator_role] || 1.0;
-      
       weight += positionFactor * typeFactor * roleFactor;
     });
     
     actor.weight = weight;
   });
 
-  // Step 3: But-for test - actors with no events get zero weight
-  // Actors with events that are purely observational get reduced weight
-  
+  // Step 3: But-for test — actors with no events get zero weight
   // Step 4: Normalize to percentages
   const totalWeight = Object.values(actorEvents).reduce((sum, a) => sum + a.weight, 0);
   
@@ -98,10 +88,9 @@ function deterministicScore(args) {
     }
   });
   
-  // Sort by share descending
   liabilityShares.sort((a, b) => b.share - a.share);
 
-  // Step 5: Determine verdict based on primary liable party
+  // Step 5: Determine verdict
   const primary = liabilityShares[0] || {};
   let verdict = "UNDETERMINED";
   if (primary.type === "ai_system" && primary.role === "provider") {
@@ -114,10 +103,9 @@ function deterministicScore(args) {
     verdict = "DEPLOYER_SYSTEM_AT_FAULT";
   }
 
-  // Step 6: Compute damages estimate (deterministic from inputs)
-  // Hash-based deterministic "randomness" from incident title
+  // Step 6: Damages estimate
   const titleHash = hashCode(args.title || "");
-  const damageMultiplier = 0.7 + (Math.abs(titleHash % 100) / 100) * 0.6; // 0.7 - 1.3x
+  const damageMultiplier = 0.7 + (Math.abs(titleHash % 100) / 100) * 0.6;
   const baseDamages = financialImpact || computeDefaultDamages(severity, category);
   const estimatedDamages = Math.round(baseDamages * damageMultiplier);
 
@@ -137,10 +125,10 @@ function deterministicScore(args) {
     };
   });
 
-  // Step 8: Regulatory mapping (deterministic based on jurisdiction + category)
+  // Step 8: Regulatory mapping
   const regulatory = computeRegulatory(jurisdiction, category, severity);
 
-  // Step 9: Generate certificate metadata
+  // Step 9: Certificate metadata
   const incidentId = "inc_" + hashHex(args.title + JSON.stringify(args.agents));
   const certId = "cert_" + hashHex(incidentId + Date.now().toString());
   const timestamp = new Date().toISOString();
@@ -228,28 +216,24 @@ function computeDefaultDamages(severity, category) {
 
 function computeRegulatory(jurisdiction, category, severity) {
   const reg = {};
-  // EU AI Act
   if (jurisdiction === "EU" || jurisdiction === "DE" || jurisdiction === "FR") {
     reg.eu_ai_act_article_6 = severity === "critical" || category === "healthcare" || category === "autonomous_systems";
-    reg.eu_ai_act_article_26 = true; // Deployer obligations always apply
-    reg.eu_ai_act_article_52 = category === "content_moderation"; // Transparency
-    reg.eu_ai_act_annex_iii = severity === "critical" || severity === "high"; // High-risk
+    reg.eu_ai_act_article_26 = true;
+    reg.eu_ai_act_article_52 = category === "content_moderation";
+    reg.eu_ai_act_annex_iii = severity === "critical" || severity === "high";
   }
-  // Australian
   if (jurisdiction === "AU") {
     reg.apra_cps_230 = category === "financial_services";
     reg.nsw_ai_assurance = true;
     reg.ai_ethics_framework = true;
   }
-  // US
   if (jurisdiction === "US") {
     reg.ccpa = true;
     reg.ftc_section_5 = category === "employment" || category === "financial_services";
     reg.eeoc_guidance = category === "employment";
     reg.gdpr_article_22 = false;
   }
-  // Always applicable
-  reg.iso_42001 = true; // AI management system
+  reg.iso_42001 = true;
   reg.nist_ai_rmf = severity === "critical" || severity === "high";
   return reg;
 }
@@ -262,10 +246,7 @@ async function handleRun(request, cors) {
   try {
     const body = await request.json();
     const args = body.arguments || {};
-    
-    // Run deterministic scoring engine locally (no external MCP call needed)
     const result = deterministicScore(args);
-    
     return new Response(JSON.stringify(result), {
       status: 200, headers: {...cors, "Content-Type": "application/json"}
     });
@@ -280,11 +261,7 @@ async function handlePdf(request, cors) {
   try {
     const body = await request.json();
     const cert = body.certificate || {};
-    
-    // Generate PDF as a formatted text document (Workers can't use heavy PDF libs)
-    // We generate a clean HTML-to-print page that the browser can save as PDF
     const pdfHtml = generatePdfHtml(cert);
-    
     return new Response(pdfHtml, {
       status: 200,
       headers: {
@@ -296,6 +273,31 @@ async function handlePdf(request, cors) {
   } catch(e) {
     return new Response(JSON.stringify({error: e.message}), {
       status: 500, headers: {...cors, "Content-Type": "application/json"}
+    });
+  }
+}
+
+async function handleAnalytics(request, cors) {
+  // Anonymous, privacy-preserving analytics endpoint
+  // Accepts: {event, scenario_type, jurisdiction, category, severity, custom, has_share}
+  // Does NOT store: IP, user agent, cookies, or any PII
+  // In production this would write to KV; in demo mode we just acknowledge
+  try {
+    const body = await request.json();
+    const event = body.event || "unknown";
+    const allowed = ["demo_run", "custom_scenario_run", "share_link_created", "share_link_loaded", "compare_run", "pdf_download"];
+    if (!allowed.includes(event)) {
+      return new Response(JSON.stringify({ok: false, reason: "unknown_event"}), {
+        status: 400, headers: {...cors, "Content-Type": "application/json"}
+      });
+    }
+    // In production: await env.ANALYTICS_KV.put(`evt:${event}:${Date.now()}`, JSON.stringify({...body, ts: Date.now()}));
+    return new Response(JSON.stringify({ok: true, event, ts: Date.now()}), {
+      status: 200, headers: {...cors, "Content-Type": "application/json"}
+    });
+  } catch(e) {
+    return new Response(JSON.stringify({ok: false}), {
+      status: 200, headers: {...cors, "Content-Type": "application/json"}
     });
   }
 }
@@ -339,22 +341,29 @@ function generatePdfHtml(c) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// HTML FRONTEND
+// HTML FRONTEND (v4 — custom scenarios, share links, compare mode)
 // ═══════════════════════════════════════════════════════════════════
 
-const HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FaultKey Interactive Demo</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,system-ui,sans-serif;background:#0f0f23;color:#e2e8f0;min-height:100vh;padding:1.5rem}.c{max-width:700px;margin:0 auto}
-h1{font-size:1.5rem;background:linear-gradient(135deg,#818cf8,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:.3rem}
+const HTML = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FaultKey Interactive Demo — Deterministic AI Liability Attribution</title>
+<meta name="description" content="Run the real FaultKey deterministic scoring engine. No LLM. Same input = same output. Try preset scenarios or build your own.">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,system-ui,sans-serif;background:#0f0f23;color:#e2e8f0;min-height:100vh;padding:1.5rem}
+.c{max-width:760px;margin:0 auto}
+h1{font-size:1.6rem;background:linear-gradient(135deg,#818cf8,#c084fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:.3rem}
 .sub{color:#94a3b8;font-size:.85rem;margin-bottom:1.5rem}
-.sc{display:grid;gap:.6rem;margin-bottom:1.2rem}
-.s{background:#1e1b4b;border:1px solid #312e81;border-radius:8px;padding:.8rem;cursor:pointer;transition:all .15s}
+.sc{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.5rem;margin-bottom:1.2rem}
+.s{background:#1e1b4b;border:1px solid #312e81;border-radius:8px;padding:.7rem;cursor:pointer;transition:all .15s}
 .s:hover{border-color:#6366f1}.s.a{border-color:#818cf8;background:#1e1b4b;box-shadow:0 0 12px rgba(99,102,241,.3)}
-.s h3{font-size:.9rem;color:#c4b5fd;margin-bottom:.2rem}.s p{font-size:.75rem;color:#94a3b8}
-.btns{display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem}
-.btn{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;padding:.7rem 1.5rem;border-radius:6px;font-size:.9rem;cursor:pointer;font-weight:600;transition:transform .15s}
+.s h3{font-size:.8rem;color:#c4b5fd;margin-bottom:.2rem}.s p{font-size:.7rem;color:#94a3b8}
+.btns{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem}
+.btn{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;padding:.65rem 1.3rem;border-radius:6px;font-size:.85rem;cursor:pointer;font-weight:600;transition:transform .15s}
 .btn:hover{transform:scale(1.02)}.btn:active{transform:scale(0.97)}.btn:disabled{opacity:.5;cursor:not-allowed}
-.btn2{background:transparent;border:1px solid #6366f1;color:#c4b5fd;padding:.5rem 1rem;border-radius:6px;font-size:.8rem;cursor:pointer;transition:all .15s;display:none}
+.btn2{background:transparent;border:1px solid #6366f1;color:#c4b5fd;padding:.45rem .9rem;border-radius:6px;font-size:.75rem;cursor:pointer;transition:all .15s;display:none}
 .btn2:hover{background:#1e1b4b}.btn2.show{display:inline-flex;align-items:center;gap:.3rem}
+.btn3{background:#065f46;border:1px solid #10b981;color:#34d399;padding:.45rem .9rem;border-radius:6px;font-size:.75rem;cursor:pointer;transition:all .15s;display:none}
+.btn3:hover{background:#064e3b}.btn3.show{display:inline-flex;align-items:center;gap:.3rem}
 .res{margin-top:1.2rem;display:none}.res.show{display:block}
 .v{font-size:1rem;font-weight:700;color:#34d399;margin-bottom:.8rem;text-transform:uppercase}
 .bar{display:flex;border-radius:4px;overflow:hidden;height:28px;margin-bottom:.8rem}
@@ -371,135 +380,285 @@ h1{font-size:1.5rem;background:linear-gradient(135deg,#818cf8,#c084fc);-webkit-b
 .ok{color:#34d399}.info{color:#60a5fa}.err{color:#f87171}
 a{color:#818cf8}
 .badge{display:inline-block;background:#065f46;color:#34d399;font-size:.65rem;padding:2px 6px;border-radius:3px;margin-left:.5rem;font-weight:600}
-</style></head><body><div class="c"><h1>FaultKey Interactive Demo</h1><p class="sub">Real deterministic scoring engine. No LLM. Identical inputs = identical outputs.<span class="badge">ENGINE v1</span></p>
+/* Custom scenario editor */
+.editor{display:none;background:#1a1a3e;border:1px solid #312e81;border-radius:8px;padding:1rem;margin-bottom:1rem}
+.editor.show{display:block}
+.editor label{display:block;font-size:.7rem;color:#94a3b8;margin-bottom:.2rem;margin-top:.6rem;text-transform:uppercase;letter-spacing:.03em}
+.editor input,.editor select,.editor textarea{width:100%;background:#0f172a;border:1px solid #1e293b;color:#e2e8f0;padding:.45rem .6rem;border-radius:4px;font-size:.8rem;font-family:inherit}
+.editor input:focus,.editor select:focus,.editor textarea:focus{outline:none;border-color:#6366f1}
+.editor textarea{resize:vertical;min-height:50px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
+.row3{display:grid;grid-template-columns:2fr 1fr 1fr;gap:.6rem}
+.agent-row{background:#0f172a;border:1px solid #1e293b;border-radius:6px;padding:.6rem;margin-top:.4rem}
+.event-row{background:#0f172a;border:1px solid #1e293b;border-radius:6px;padding:.6rem;margin-top:.4rem;position:relative}
+.remove-btn{position:absolute;top:.4rem;right:.4rem;background:#7f1d1d;border:none;color:#fca5a5;width:20px;height:20px;border-radius:3px;cursor:pointer;font-size:.7rem;display:flex;align-items:center;justify-content:center}
+.add-btn{background:transparent;border:1px dashed #312e81;color:#818cf8;padding:.4rem;border-radius:4px;width:100%;margin-top:.5rem;cursor:pointer;font-size:.75rem}
+.add-btn:hover{border-color:#6366f1;background:#1e1b4b}
+.section-title{font-size:.75rem;color:#818cf8;font-weight:600;margin-top:.8rem;margin-bottom:.3rem;text-transform:uppercase}
+/* Compare mode */
+.compare{display:none;margin-top:1rem;background:#1a1a3e;border:1px solid #312e81;border-radius:8px;padding:1rem}
+.compare.show{display:block}
+.compare h4{font-size:.85rem;color:#c084fc;margin-bottom:.6rem}
+.compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.compare-col{background:#0f172a;border:1px solid #1e293b;border-radius:6px;padding:.8rem}
+.compare-col h5{font-size:.75rem;color:#94a3b8;margin-bottom:.5rem;text-transform:uppercase}
+.compare-col .v{font-size:.85rem}
+.diff{color:#f59e0b;font-weight:600}
+/* Share toast */
+.toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#065f46;border:1px solid #10b981;color:#34d399;padding:.6rem 1.2rem;border-radius:6px;font-size:.8rem;display:none;z-index:999;animation:fadeIn .2s}
+.toast.show{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+</style></head><body>
+<div class="c">
+<h1>FaultKey Interactive Demo</h1>
+<p class="sub">Real deterministic scoring engine. No LLM. Identical inputs = identical outputs.<span class="badge">ENGINE v1</span></p>
+
 <div class="sc" id="sc"></div>
+<div class="editor" id="editor"></div>
+
 <div class="btns">
 <button class="btn" id="btn" onclick="go()">Run Analysis</button>
-<button class="btn2" id="pdfBtn" onclick="getPdf()">&#128196; Download Certificate</button>
+<button class="btn2" id="pdfBtn" onclick="getPdf()">&#128196; Certificate</button>
+<button class="btn2" id="shareBtn" onclick="share()">&#128279; Share</button>
+<button class="btn3" id="compareBtn" onclick="compare()">&#8644; Compare</button>
+<button class="btn2" id="jsonBtn" onclick="copyJson()">&#128203; JSON</button>
 </div>
+
+<div class="compare" id="compare"></div>
 <div class="res" id="res"></div>
 <div class="log" id="log"></div>
-<p style="margin-top:2rem;font-size:.75rem;color:#475569"><a href="https://faultkey.com">faultkey.com</a> | <a href="https://github.com/smq9sn5jck-coder/causallayer-mcp">GitHub</a></p>
+
+<p style="margin-top:2rem;font-size:.75rem;color:#475569">
+<a href="https://faultkey.com">faultkey.com</a> | 
+<a href="https://github.com/smq9sn5jck-coder/causallayer-mcp">GitHub</a> | 
+<a href="https://github.com/smq9sn5jck-coder/causallayer-mcp#quickstart">Install</a>
+</p>
 </div>
+<div class="toast" id="toast"></div>
+
 <script>
+// ═══════════════════════════════════════════════════════════════
+// SCENARIOS
+// ═══════════════════════════════════════════════════════════════
 var S = [
   {
-    t: "Loan Denial", d: "AI rejects mortgage application",
-    args: {
-      title: "AI Loan Denial - Incorrect Credit Data",
-      description: "AI mortgage system denied qualified applicant based on incorrect third-party data.",
-      category: "financial_services", severity: "high", jurisdiction: "AU", financial_impact_cents: 4500000, currency: "AUD",
-      agents: [
-        {id:"ai-1",name:"Anthropic Claude 3.5",type:"ai_system",operator_role:"provider",vendor_name:"Anthropic",model_id:"claude-3.5-sonnet"},
-        {id:"vendor-1",name:"National Credit Corp",type:"third_party",operator_role:"vendor"},
-        {id:"human-1",name:"Loan Officer",type:"human_operator",operator_role:"deployer"}
-      ],
-      events: [
-        {id:"e1",type:"data_retrieval",timestamp:"2026-05-20T09:00:00Z",actor_id:"vendor-1",description:"Credit data retrieved from National Credit Corp API - returned stale record from 2019"},
-        {id:"e2",type:"inference",timestamp:"2026-05-20T09:00:01Z",actor_id:"ai-1",description:"Claude 3.5 processed loan application using stale credit data, output: DENY"},
-        {id:"e3",type:"human_review",timestamp:"2026-05-20T09:05:00Z",actor_id:"human-1",description:"Loan officer accepted AI denial without independent credit verification"}
-      ],
-      deterministic_only: true
-    }
+    t:"Loan Denial", d:"AI rejects mortgage application", icon:"&#x1F3E6;",
+    args:{title:"AI Loan Denial - Incorrect Credit Data",description:"AI mortgage system denied qualified applicant based on incorrect third-party data.",category:"financial_services",severity:"high",jurisdiction:"AU",financial_impact_cents:4500000,currency:"AUD",
+    agents:[{id:"ai-1",name:"Anthropic Claude 3.5",type:"ai_system",operator_role:"provider",vendor_name:"Anthropic",model_id:"claude-3.5-sonnet"},{id:"vendor-1",name:"National Credit Corp",type:"third_party",operator_role:"vendor"},{id:"human-1",name:"Loan Officer",type:"human_operator",operator_role:"deployer"}],
+    events:[{id:"e1",type:"data_retrieval",timestamp:"2026-05-20T09:00:00Z",actor_id:"vendor-1",description:"Credit data retrieved from National Credit Corp API - returned stale record from 2019"},{id:"e2",type:"inference",timestamp:"2026-05-20T09:00:01Z",actor_id:"ai-1",description:"Claude 3.5 processed loan application using stale credit data, output: DENY"},{id:"e3",type:"human_review",timestamp:"2026-05-20T09:05:00Z",actor_id:"human-1",description:"Loan officer accepted AI denial without independent credit verification"}],deterministic_only:true}
   },
   {
-    t: "Medical Triage", d: "Misclassifies urgent case",
-    args: {
-      title: "AI Triage Misclassification - Cardiac Event",
-      description: "AI triage system classified chest pain as low-priority, delaying treatment by 4 hours.",
-      category: "healthcare", severity: "critical", jurisdiction: "EU", financial_impact_cents: 25000000, currency: "EUR",
-      agents: [
-        {id:"ai-1",name:"OpenAI GPT-4",type:"ai_system",operator_role:"provider",vendor_name:"OpenAI",model_id:"gpt-4-turbo"},
-        {id:"sys-1",name:"Hospital EHR System",type:"vendor",operator_role:"vendor"},
-        {id:"human-1",name:"Triage Nurse",type:"human_operator",operator_role:"deployer"}
-      ],
-      events: [
-        {id:"e1",type:"data_input",timestamp:"2026-05-19T14:00:00Z",actor_id:"sys-1",description:"Patient vitals entered - elevated BP and chest pain noted in EHR"},
-        {id:"e2",type:"inference",timestamp:"2026-05-19T14:00:02Z",actor_id:"ai-1",description:"GPT-4 classified case as low-priority based on age demographics bias"},
-        {id:"e3",type:"human_override_missed",timestamp:"2026-05-19T14:01:00Z",actor_id:"human-1",description:"Nurse followed AI recommendation without physical assessment"}
-      ],
-      deterministic_only: true
-    }
+    t:"Medical Triage", d:"Misclassifies urgent case", icon:"&#x1F3E5;",
+    args:{title:"AI Triage Misclassification - Cardiac Event",description:"AI triage system classified chest pain as low-priority, delaying treatment by 4 hours.",category:"healthcare",severity:"critical",jurisdiction:"EU",financial_impact_cents:25000000,currency:"EUR",
+    agents:[{id:"ai-1",name:"OpenAI GPT-4",type:"ai_system",operator_role:"provider",vendor_name:"OpenAI",model_id:"gpt-4-turbo"},{id:"sys-1",name:"Hospital EHR System",type:"vendor",operator_role:"vendor"},{id:"human-1",name:"Triage Nurse",type:"human_operator",operator_role:"deployer"}],
+    events:[{id:"e1",type:"data_input",timestamp:"2026-05-19T14:00:00Z",actor_id:"sys-1",description:"Patient vitals entered - elevated BP and chest pain noted in EHR"},{id:"e2",type:"inference",timestamp:"2026-05-19T14:00:02Z",actor_id:"ai-1",description:"GPT-4 classified case as low-priority based on age demographics bias"},{id:"e3",type:"human_override_missed",timestamp:"2026-05-19T14:01:00Z",actor_id:"human-1",description:"Nurse followed AI recommendation without physical assessment"}],deterministic_only:true}
   },
   {
-    t: "Content Mod", d: "Removes legitimate post",
-    args: {
-      title: "Wrongful Content Removal - Whistleblower Post",
-      description: "AI content moderation removed factual whistleblower post about corporate fraud.",
-      category: "content_moderation", severity: "medium", jurisdiction: "US", financial_impact_cents: 500000, currency: "USD",
-      agents: [
-        {id:"ai-1",name:"Meta LLaMA 3",type:"ai_system",operator_role:"provider",vendor_name:"Meta",model_id:"llama-3-70b"},
-        {id:"sys-1",name:"Policy Engine v4.2",type:"ai_system",operator_role:"deployer"},
-        {id:"human-1",name:"Human Reviewer",type:"human_operator",operator_role:"user"}
-      ],
-      events: [
-        {id:"e1",type:"content_scan",timestamp:"2026-05-18T08:00:00Z",actor_id:"ai-1",description:"LLaMA 3 flagged whistleblower post as misinformation with 0.72 confidence"},
-        {id:"e2",type:"policy_check",timestamp:"2026-05-18T08:00:01Z",actor_id:"sys-1",description:"Policy engine auto-escalated to removal without context window analysis"},
-        {id:"e3",type:"human_review",timestamp:"2026-05-18T10:00:00Z",actor_id:"human-1",description:"Human reviewer upheld removal after 8-second review without reading full post"}
-      ],
-      deterministic_only: true
-    }
+    t:"Content Mod", d:"Removes legitimate post", icon:"&#x1F6E1;",
+    args:{title:"Wrongful Content Removal - Whistleblower Post",description:"AI content moderation removed factual whistleblower post about corporate fraud.",category:"content_moderation",severity:"medium",jurisdiction:"US",financial_impact_cents:500000,currency:"USD",
+    agents:[{id:"ai-1",name:"Meta LLaMA 3",type:"ai_system",operator_role:"provider",vendor_name:"Meta",model_id:"llama-3-70b"},{id:"sys-1",name:"Policy Engine v4.2",type:"ai_system",operator_role:"deployer"},{id:"human-1",name:"Human Reviewer",type:"human_operator",operator_role:"user"}],
+    events:[{id:"e1",type:"content_scan",timestamp:"2026-05-18T08:00:00Z",actor_id:"ai-1",description:"LLaMA 3 flagged whistleblower post as misinformation with 0.72 confidence"},{id:"e2",type:"policy_check",timestamp:"2026-05-18T08:00:01Z",actor_id:"sys-1",description:"Policy engine auto-escalated to removal without context window analysis"},{id:"e3",type:"human_review",timestamp:"2026-05-18T10:00:00Z",actor_id:"human-1",description:"Human reviewer upheld removal after 8-second review without reading full post"}],deterministic_only:true}
   },
   {
-    t: "Hiring AI", d: "Screens out qualified candidate",
-    args: {
-      title: "AI Hiring Discrimination - Parental Leave Gap",
-      description: "AI screening tool rejected 15-year experience candidate due to 2-year parental leave gap.",
-      category: "employment", severity: "high", jurisdiction: "EU", financial_impact_cents: 8000000, currency: "EUR",
-      agents: [
-        {id:"ai-1",name:"Microsoft Copilot HR",type:"ai_system",operator_role:"provider",vendor_name:"Microsoft",model_id:"copilot-hr-v2"},
-        {id:"sys-1",name:"ATS Platform",type:"vendor",operator_role:"deployer"},
-        {id:"human-1",name:"HR Manager",type:"human_operator",operator_role:"deployer"}
-      ],
-      events: [
-        {id:"e1",type:"resume_scan",timestamp:"2026-05-17T11:00:00Z",actor_id:"ai-1",description:"Copilot HR flagged 2-year employment gap as negative signal without gap-reason analysis"},
-        {id:"e2",type:"scoring",timestamp:"2026-05-17T11:00:01Z",actor_id:"sys-1",description:"ATS assigned score 23/100 based on AI flag, below 40-point threshold"},
-        {id:"e3",type:"auto_rejection",timestamp:"2026-05-17T11:05:00Z",actor_id:"human-1",description:"HR manager batch-approved 47 AI rejections without individual review"}
-      ],
-      deterministic_only: true
-    }
+    t:"Hiring AI", d:"Screens out qualified candidate", icon:"&#x1F464;",
+    args:{title:"AI Hiring Discrimination - Parental Leave Gap",description:"AI screening tool rejected 15-year experience candidate due to 2-year parental leave gap.",category:"employment",severity:"high",jurisdiction:"EU",financial_impact_cents:8000000,currency:"EUR",
+    agents:[{id:"ai-1",name:"Microsoft Copilot HR",type:"ai_system",operator_role:"provider",vendor_name:"Microsoft",model_id:"copilot-hr-v2"},{id:"sys-1",name:"ATS Platform",type:"vendor",operator_role:"deployer"},{id:"human-1",name:"HR Manager",type:"human_operator",operator_role:"deployer"}],
+    events:[{id:"e1",type:"resume_scan",timestamp:"2026-05-17T11:00:00Z",actor_id:"ai-1",description:"Copilot HR flagged 2-year employment gap as negative signal without gap-reason analysis"},{id:"e2",type:"scoring",timestamp:"2026-05-17T11:00:01Z",actor_id:"sys-1",description:"ATS assigned score 23/100 based on AI flag, below 40-point threshold"},{id:"e3",type:"auto_rejection",timestamp:"2026-05-17T11:05:00Z",actor_id:"human-1",description:"HR manager batch-approved 47 AI rejections without individual review"}],deterministic_only:true}
   },
   {
-    t: "Autonomous Vehicle", d: "Fails to detect pedestrian",
-    args: {
-      title: "AV Perception Failure - Pedestrian Detection in Rain",
-      description: "Self-driving vehicle failed to brake for pedestrian crossing. Lidar degraded by heavy rain.",
-      category: "autonomous_systems", severity: "critical", jurisdiction: "AU", financial_impact_cents: 50000000, currency: "AUD",
-      agents: [
-        {id:"ai-1",name:"Waymo Perception Stack",type:"ai_system",operator_role:"provider",vendor_name:"Waymo",model_id:"perception-v5"},
-        {id:"sys-1",name:"Sensor Fusion Module",type:"ai_system",operator_role:"deployer"},
-        {id:"human-1",name:"Safety Driver",type:"human_operator",operator_role:"user"}
-      ],
-      events: [
-        {id:"e1",type:"sensor_degradation",timestamp:"2026-05-16T19:30:00Z",actor_id:"sys-1",description:"Lidar point cloud degraded 60% due to heavy rain - no automatic fallback to camera-only mode triggered"},
-        {id:"e2",type:"inference_failure",timestamp:"2026-05-16T19:30:01Z",actor_id:"ai-1",description:"Perception stack failed to detect pedestrian at 12m despite clear camera feed available"},
-        {id:"e3",type:"human_intervention_missed",timestamp:"2026-05-16T19:30:02Z",actor_id:"human-1",description:"Safety driver monitoring dashboard screen, not road ahead"}
-      ],
-      deterministic_only: true
-    }
+    t:"Autonomous Vehicle", d:"Fails to detect pedestrian", icon:"&#x1F697;",
+    args:{title:"AV Perception Failure - Pedestrian Detection in Rain",description:"Self-driving vehicle failed to brake for pedestrian crossing. Lidar degraded by heavy rain.",category:"autonomous_systems",severity:"critical",jurisdiction:"AU",financial_impact_cents:50000000,currency:"AUD",
+    agents:[{id:"ai-1",name:"Waymo Perception Stack",type:"ai_system",operator_role:"provider",vendor_name:"Waymo",model_id:"perception-v5"},{id:"sys-1",name:"Sensor Fusion Module",type:"ai_system",operator_role:"deployer"},{id:"human-1",name:"Safety Driver",type:"human_operator",operator_role:"user"}],
+    events:[{id:"e1",type:"sensor_degradation",timestamp:"2026-05-16T19:30:00Z",actor_id:"sys-1",description:"Lidar point cloud degraded 60% due to heavy rain - no automatic fallback to camera-only mode triggered"},{id:"e2",type:"inference_failure",timestamp:"2026-05-16T19:30:01Z",actor_id:"ai-1",description:"Perception stack failed to detect pedestrian at 12m despite clear camera feed available"},{id:"e3",type:"human_intervention_missed",timestamp:"2026-05-16T19:30:02Z",actor_id:"human-1",description:"Safety driver monitoring dashboard screen, not road ahead"}],deterministic_only:true}
   }
 ];
 
 var sel = S[0];
 var lastResult = null;
+var prevResult = null;
+var isCustom = false;
+var customArgs = null;
+
+// ═══════════════════════════════════════════════════════════════
+// INIT — render scenario cards + check for share link
+// ═══════════════════════════════════════════════════════════════
 var el = document.getElementById("sc");
 S.forEach(function(x, i) {
-  el.innerHTML += '<div class="s' + (i===0?" a":"") + '" onclick="pick('+i+')" id="s'+i+'"><h3>'+x.t+'</h3><p>'+x.d+'</p></div>';
+  el.innerHTML += '<div class="s'+(i===0?" a":"")+'" onclick="pick('+i+')" id="s'+i+'"><h3>'+x.icon+' '+x.t+'</h3><p>'+x.d+'</p></div>';
 });
+el.innerHTML += '<div class="s" onclick="pickCustom()" id="s-custom"><h3>&#9998; Custom</h3><p>Build your own scenario</p></div>';
+
+// Check URL hash for shared scenario
+(function(){
+  try {
+    var h = window.location.hash;
+    if (h && h.startsWith("#share=")) {
+      var encoded = h.slice(7);
+      var json = decodeURIComponent(atob(encoded));
+      var shared = JSON.parse(json);
+      if (shared && shared.title && shared.agents) {
+        customArgs = shared;
+        isCustom = true;
+        document.querySelectorAll(".s").forEach(function(e){e.classList.remove("a")});
+        document.getElementById("s-custom").classList.add("a");
+        renderEditor(shared);
+        document.getElementById("editor").classList.add("show");
+        analytics("share_link_loaded", {scenario_type:"custom", category:shared.category});
+        showToast("Shared scenario loaded from URL");
+      }
+    }
+  } catch(e) { /* ignore malformed share links */ }
+})();
 
 function pick(i) {
+  isCustom = false;
   document.querySelectorAll(".s").forEach(function(e){e.classList.remove("a")});
   document.getElementById("s"+i).classList.add("a");
+  document.getElementById("editor").classList.remove("show");
   sel = S[i];
 }
 
-function lg(m,c) {
-  var el = document.getElementById("log");
-  el.style.display = "block";
-  el.innerHTML += '<div class="'+(c||'')+'">'+m+'</div>';
-  el.scrollTop = 99999;
+function pickCustom() {
+  isCustom = true;
+  document.querySelectorAll(".s").forEach(function(e){e.classList.remove("a")});
+  document.getElementById("s-custom").classList.add("a");
+  if (!customArgs) {
+    customArgs = {
+      title:"",description:"",category:"financial_services",severity:"high",jurisdiction:"AU",
+      financial_impact_cents:1000000,currency:"AUD",
+      agents:[
+        {id:"ai-1",name:"",type:"ai_system",operator_role:"provider"},
+        {id:"vendor-1",name:"",type:"third_party",operator_role:"vendor"},
+        {id:"human-1",name:"",type:"human_operator",operator_role:"deployer"}
+      ],
+      events:[
+        {id:"e1",type:"data_retrieval",timestamp:"2026-01-01T00:00:00Z",actor_id:"ai-1",description:""},
+        {id:"e2",type:"inference",timestamp:"2026-01-01T00:00:01Z",actor_id:"ai-1",description:""},
+        {id:"e3",type:"human_review",timestamp:"2026-01-01T00:00:02Z",actor_id:"human-1",description:""}
+      ],
+      deterministic_only:true
+    };
+  }
+  renderEditor(customArgs);
+  document.getElementById("editor").classList.add("show");
 }
 
+// ═══════════════════════════════════════════════════════════════
+// CUSTOM SCENARIO EDITOR
+// ═══════════════════════════════════════════════════════════════
+function renderEditor(args) {
+  var ed = document.getElementById("editor");
+  var agentOpts = args.agents.map(function(a){return '<option value="'+a.id+'">'+a.name+'</option>'}).join("");
+  var typeOpts = '<option value="data_retrieval">Data Retrieval</option><option value="inference">Inference</option><option value="human_review">Human Review</option><option value="human_override_missed">Human Override Missed</option><option value="human_intervention_missed">Human Intervention Missed</option><option value="auto_rejection">Auto Rejection</option><option value="policy_check">Policy Check</option><option value="content_scan">Content Scan</option><option value="scoring">Scoring</option><option value="sensor_degradation">Sensor Degradation</option><option value="inference_failure">Inference Failure</option><option value="resume_scan">Resume Scan</option><option value="data_input">Data Input</option>';
+  
+  var html = '<div class="section-title">Incident Details</div>';
+  html += '<label>Title *</label><input id="ce-title" value="'+esc(args.title)+'" placeholder="e.g. AI Chatbot Gave Dangerous Medical Advice">';
+  html += '<label>Description</label><textarea id="ce-desc" placeholder="Brief description of what happened">'+esc(args.description)+'</textarea>';
+  html += '<div class="row">';
+  html += '<div><label>Severity</label><select id="ce-sev"><option value="critical"'+(args.severity==="critical"?" selected":"")+'>Critical</option><option value="high"'+(args.severity==="high"?" selected":"")+'>High</option><option value="medium"'+(args.severity==="medium"?" selected":"")+'>Medium</option><option value="low"'+(args.severity==="low"?" selected":"")+'>Low</option></select></div>';
+  html += '<div><label>Jurisdiction</label><select id="ce-jur"><option value="AU"'+(args.jurisdiction==="AU"?" selected":"")+'>AU</option><option value="EU"'+(args.jurisdiction==="EU"?" selected":"")+'>EU</option><option value="US"'+(args.jurisdiction==="US"?" selected":"")+'>US</option></select></div>';
+  html += '</div>';
+  html += '<div class="row">';
+  html += '<div><label>Category</label><select id="ce-cat"><option value="financial_services"'+(args.category==="financial_services"?" selected":"")+'>Financial Services</option><option value="healthcare"'+(args.category==="healthcare"?" selected":"")+'>Healthcare</option><option value="employment"'+(args.category==="employment"?" selected":"")+'>Employment</option><option value="content_moderation"'+(args.category==="content_moderation"?" selected":"")+'>Content Moderation</option><option value="autonomous_systems"'+(args.category==="autonomous_systems"?" selected":"")+'>Autonomous Systems</option></select></div>';
+  html += '<div><label>Damages (cents)</label><input id="ce-dmg" type="number" value="'+(args.financial_impact_cents||1000000)+'"></div>';
+  html += '</div>';
+  
+  html += '<div class="section-title">Agents (3 required)</div>';
+  args.agents.forEach(function(a, i) {
+    html += '<div class="agent-row"><div class="row3">';
+    html += '<div><label>Name *</label><input id="ce-agent-'+i+'-name" value="'+esc(a.name)+'" placeholder="e.g. GPT-4o"></div>';
+    html += '<div><label>Role</label><select id="ce-agent-'+i+'-role"><option value="provider"'+(a.operator_role==="provider"?" selected":"")+'>Provider</option><option value="vendor"'+(a.operator_role==="vendor"?" selected":"")+'>Vendor</option><option value="deployer"'+(a.operator_role==="deployer"?" selected":"")+'>Deployer</option><option value="user"'+(a.operator_role==="user"?" selected":"")+'>User</option></select></div>';
+    html += '<div><label>Type</label><select id="ce-agent-'+i+'-type"><option value="ai_system"'+(a.type==="ai_system"?" selected":"")+'>AI System</option><option value="third_party"'+(a.type==="third_party"?" selected":"")+'>Third Party</option><option value="human_operator"'+(a.type==="human_operator"?" selected":"")+'>Human Operator</option><option value="vendor"'+(a.type==="vendor"?" selected":"")+'>Vendor</option></select></div>';
+    html += '</div></div>';
+  });
+  
+  html += '<div class="section-title">Event Chain</div>';
+  html += '<div id="ce-events">';
+  args.events.forEach(function(ev, i) {
+    html += renderEventRow(ev, i, args.agents);
+  });
+  html += '</div>';
+  html += '<button class="add-btn" onclick="addEvent()">+ Add Event</button>';
+  
+  ed.innerHTML = html;
+}
+
+function renderEventRow(ev, i, agents) {
+  var agentOpts = agents.map(function(a){return '<option value="'+a.id+'"'+(ev.actor_id===a.id?" selected":"")+'>'+(a.name||a.id)+'</option>'}).join("");
+  var typeOpts = ['data_retrieval','inference','human_review','human_override_missed','human_intervention_missed','auto_rejection','policy_check','content_scan','scoring','sensor_degradation','inference_failure','resume_scan','data_input'].map(function(t){return '<option value="'+t+'"'+(ev.type===t?" selected":"")+'>'+t.replace(/_/g," ")+'</option>'}).join("");
+  var html = '<div class="event-row" id="ce-ev-'+i+'">';
+  if (i >= 3) html += '<button class="remove-btn" onclick="removeEvent('+i+')">×</button>';
+  html += '<div class="row3">';
+  html += '<div><label>Description</label><input id="ce-ev-'+i+'-desc" value="'+esc(ev.description)+'" placeholder="What happened?"></div>';
+  html += '<div><label>Type</label><select id="ce-ev-'+i+'-type">'+typeOpts+'</select></div>';
+  html += '<div><label>Actor</label><select id="ce-ev-'+i+'-actor">'+agentOpts+'</select></div>';
+  html += '</div></div>';
+  return html;
+}
+
+function addEvent() {
+  var args = readCustomArgs();
+  var n = args.events.length;
+  if (n >= 8) { showToast("Maximum 8 events"); return; }
+  args.events.push({id:"e"+(n+1),type:"inference",timestamp:"2026-01-01T00:00:0"+(n+1)+"Z",actor_id:args.agents[0].id,description:""});
+  customArgs = args;
+  renderEditor(args);
+  document.getElementById("editor").classList.add("show");
+}
+
+function removeEvent(i) {
+  var args = readCustomArgs();
+  if (args.events.length <= 3) { showToast("Minimum 3 events required"); return; }
+  args.events.splice(i, 1);
+  args.events.forEach(function(ev,idx){ev.id="e"+(idx+1)});
+  customArgs = args;
+  renderEditor(args);
+  document.getElementById("editor").classList.add("show");
+}
+
+function readCustomArgs() {
+  var title = gv("ce-title");
+  var desc = gv("ce-desc");
+  var sev = gv("ce-sev");
+  var jur = gv("ce-jur");
+  var cat = gv("ce-cat");
+  var dmg = parseInt(gv("ce-dmg")) || 1000000;
+  
+  var agents = [];
+  for (var i=0;i<3;i++) {
+    agents.push({
+      id: ["ai-1","vendor-1","human-1"][i],
+      name: gv("ce-agent-"+i+"-name"),
+      type: gv("ce-agent-"+i+"-type"),
+      operator_role: gv("ce-agent-"+i+"-role")
+    });
+  }
+  
+  var events = [];
+  var evIdx = 0;
+  while (document.getElementById("ce-ev-"+evIdx+"-desc")) {
+    events.push({
+      id: "e"+(evIdx+1),
+      type: gv("ce-ev-"+evIdx+"-type"),
+      timestamp: "2026-01-01T00:00:0"+evIdx+"Z",
+      actor_id: gv("ce-ev-"+evIdx+"-actor"),
+      description: gv("ce-ev-"+evIdx+"-desc")
+    });
+    evIdx++;
+  }
+  
+  return {
+    title:title, description:desc, category:cat, severity:sev, jurisdiction:jur,
+    financial_impact_cents:dmg, currency:"AUD", agents:agents, events:events, deterministic_only:true
+  };
+}
+
+function gv(id) { var e = document.getElementById(id); return e ? e.value : ""; }
+function esc(s) { return (s||"").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
+
+// ═══════════════════════════════════════════════════════════════
+// RUN ENGINE
+// ═══════════════════════════════════════════════════════════════
 async function go() {
   var b = document.getElementById("btn");
   b.disabled = true; b.textContent = "Computing...";
@@ -507,15 +666,29 @@ async function go() {
   document.getElementById("log").style.display = "block";
   document.getElementById("res").classList.remove("show");
   document.getElementById("pdfBtn").classList.remove("show");
+  document.getElementById("shareBtn").classList.remove("show");
+  document.getElementById("compareBtn").classList.remove("show");
+  document.getElementById("jsonBtn").classList.remove("show");
+  document.getElementById("compare").classList.remove("show");
+
+  var args;
+  if (isCustom) {
+    args = readCustomArgs();
+    customArgs = args;
+    if (!args.title) { lg("Error: Title is required","err"); b.disabled=false; b.textContent="Run Analysis"; return; }
+    if (!args.agents[0].name) { lg("Error: At least Agent 1 name is required","err"); b.disabled=false; b.textContent="Run Analysis"; return; }
+  } else {
+    args = sel.args;
+  }
 
   try {
     lg("Initializing deterministic scoring engine...", "info");
-    lg("Input hash: computing...", "info");
+    lg("Input: " + args.title, "info");
     
     var r = await fetch("/api/run", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({arguments: sel.args})
+      body: JSON.stringify({arguments: args})
     });
     var data = await r.json();
 
@@ -523,30 +696,114 @@ async function go() {
       lg("Error: " + data.error, "err");
     } else {
       lg("Engine: " + (data._engine || "faultkey-deterministic-v1"), "ok");
-      lg("Verdict computed: " + data.verdict, "ok");
+      lg("Verdict: " + data.verdict.replace(/_/g," "), "ok");
       lg("Input hash: " + (data.deterministic_proof?.input_hash || ""), "info");
       lg("Output hash: " + (data.deterministic_proof?.output_hash || ""), "info");
       lg("Certificate signed (ed25519)", "ok");
+      
+      // Store for compare mode
+      if (lastResult) prevResult = lastResult;
       lastResult = data;
+      
       show(data);
       document.getElementById("pdfBtn").classList.add("show");
+      document.getElementById("shareBtn").classList.add("show");
+      document.getElementById("jsonBtn").classList.add("show");
+      if (prevResult) document.getElementById("compareBtn").classList.add("show");
+      
+      // Analytics
+      analytics(isCustom ? "custom_scenario_run" : "demo_run", {
+        scenario_type: isCustom ? "custom" : sel.t,
+        category: args.category,
+        jurisdiction: args.jurisdiction,
+        severity: args.severity
+      });
     }
   } catch(e) {
-    lg("Error: " + e.message, "err");
+    lg("Network error: " + e.message, "err");
+    lg("Tip: If running locally, ensure the worker is deployed.", "info");
   }
   b.disabled = false; b.textContent = "Run Analysis";
 }
 
+// ═══════════════════════════════════════════════════════════════
+// SHARE LINK
+// ═══════════════════════════════════════════════════════════════
+function share() {
+  var args = isCustom ? readCustomArgs() : sel.args;
+  try {
+    var json = JSON.stringify(args);
+    var encoded = btoa(encodeURIComponent(json));
+    var url = window.location.origin + window.location.pathname + "#share=" + encoded;
+    
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(function(){
+        showToast("Share link copied to clipboard!");
+      });
+    } else {
+      // Fallback
+      var ta = document.createElement("textarea");
+      ta.value = url; document.body.appendChild(ta);
+      ta.select(); document.execCommand("copy");
+      document.body.removeChild(ta);
+      showToast("Share link copied!");
+    }
+    analytics("share_link_created", {scenario_type: isCustom?"custom":sel.t});
+  } catch(e) {
+    showToast("Error creating share link");
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// COMPARE MODE
+// ═══════════════════════════════════════════════════════════════
+function compare() {
+  if (!lastResult || !prevResult) return;
+  
+  var cmp = document.getElementById("compare");
+  var co = ["#ef4444","#f59e0b","#10b981","#6366f1","#ec4899"];
+  
+  function renderCol(data, label) {
+    var liability = data.liability || {};
+    var primary = liability.primary_party || {};
+    var secondary = liability.secondary_parties || [];
+    var allParties = [];
+    if (primary.name) allParties.push({name:primary.name,share:primary.share});
+    secondary.forEach(function(p){allParties.push({name:p.name,share:p.share})});
+    
+    var html = '<div class="compare-col"><h5>'+label+'</h5>';
+    html += '<div class="v" style="font-size:.8rem">'+data.verdict.replace(/_/g," ")+'</div>';
+    allParties.forEach(function(x,i){
+      html += '<div class="dr"><span class="dl" style="font-size:.7rem">'+x.name+'</span><span class="dv" style="font-size:.7rem">'+Math.round(x.share*100)+'%</span></div>';
+    });
+    html += '<div class="dr"><span class="dl" style="font-size:.7rem">Damages</span><span class="dv" style="font-size:.7rem">$'+((data.damages?.estimated_cents||0)/100).toLocaleString()+'</span></div>';
+    html += '<div style="margin-top:.4rem;font-size:.6rem;color:#64748b;font-family:monospace">hash: '+(data.deterministic_proof?.output_hash||"")+'</div>';
+    html += '</div>';
+    return html;
+  }
+  
+  var html = '<h4>&#8644; Compare Last Two Runs</h4>';
+  var same = (lastResult.deterministic_proof?.output_hash === prevResult.deterministic_proof?.output_hash);
+  if (same) {
+    html += '<p style="font-size:.75rem;color:#34d399;margin-bottom:.6rem">&#10003; Identical output hashes — determinism proven</p>';
+  } else {
+    html += '<p style="font-size:.75rem;color:#f59e0b;margin-bottom:.6rem">&#9888; Different outputs — inputs differ (expected when scenarios change)</p>';
+  }
+  html += '<div class="compare-grid">';
+  html += renderCol(prevResult, "Previous Run");
+  html += renderCol(lastResult, "Latest Run");
+  html += '</div>';
+  
+  cmp.innerHTML = html;
+  cmp.classList.add("show");
+  analytics("compare_run", {same_hash: same});
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PDF + JSON
+// ═══════════════════════════════════════════════════════════════
 function getPdf() {
   if (!lastResult) return;
-  var form = document.createElement("form");
-  form.method = "POST"; form.action = "/api/pdf"; form.target = "_blank";
-  var input = document.createElement("input");
-  input.type = "hidden"; input.name = "certificate"; input.value = JSON.stringify({certificate: lastResult});
-  form.appendChild(input);
-  document.body.appendChild(form);
-  
-  // Use fetch + blob for better mobile support
   fetch("/api/pdf", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
@@ -554,9 +811,53 @@ function getPdf() {
   }).then(function(r){return r.text()}).then(function(html){
     var w = window.open("", "_blank");
     if (w) { w.document.write(html); w.document.close(); }
-    else { alert("Please allow popups to view the certificate PDF"); }
+    else { showToast("Please allow popups for PDF"); }
   });
-  document.body.removeChild(form);
+  analytics("pdf_download", {scenario_type: isCustom?"custom":sel.t});
+}
+
+function copyJson() {
+  if (!lastResult) return;
+  var json = JSON.stringify(lastResult, null, 2);
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(json).then(function(){ showToast("JSON copied to clipboard"); });
+  } else {
+    var ta = document.createElement("textarea");
+    ta.value = json; document.body.appendChild(ta);
+    ta.select(); document.execCommand("copy");
+    document.body.removeChild(ta);
+    showToast("JSON copied!");
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ANALYTICS (anonymous, privacy-preserving)
+// ═══════════════════════════════════════════════════════════════
+function analytics(event, meta) {
+  try {
+    fetch("/api/analytics", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({event:event, ...meta, ts:Date.now()})
+    }).catch(function(){}); // fire-and-forget, never block UI
+  } catch(e) {}
+}
+
+// ═══════════════════════════════════════════════════════════════
+// UI HELPERS
+// ═══════════════════════════════════════════════════════════════
+function lg(m,c) {
+  var el = document.getElementById("log");
+  el.style.display = "block";
+  el.innerHTML += '<div class="'+(c||'')+'">'+m+'</div>';
+  el.scrollTop = 99999;
+}
+
+function showToast(msg) {
+  var t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(function(){ t.classList.remove("show"); }, 3000);
 }
 
 function show(c) {
@@ -591,22 +892,19 @@ function show(c) {
   allParties.forEach(function(x){
     html += '<div class="dr"><span class="dl">'+x.name+' <span class="tag">'+x.role+'</span></span><span class="dv">'+Math.round(x.share*100)+'%</span></div>';
   });
-  html += '<div class="dr"><span class="dl">Estimated Damages</span><span class="dv">$'+(damages.estimated_cents/100).toLocaleString()+' '+damages.currency+'</span></div>';
+  html += '<div class="dr"><span class="dl">Estimated Damages</span><span class="dv">$'+((damages.estimated_cents||0)/100).toLocaleString()+' '+damages.currency+'</span></div>';
   html += '<div class="dr"><span class="dl">Methodology</span><span class="dv">'+(liability.methodology||"").replace(/_/g," ")+'</span></div>';
   
-  // Causal chain section
   html += '<div class="section"><h4>Causal Chain ('+chain.length+' events)</h4>';
   chain.forEach(function(s){
     html += '<div class="chain-step"><strong>'+s.step+'. '+s.actor_name+'</strong> ('+s.type.replace(/_/g," ")+') — '+s.description+' <span class="tag">'+s.contribution_pct+'% contribution</span></div>';
   });
   html += '</div>';
 
-  // Regulatory section
   html += '<div class="section"><h4>Regulatory Applicability</h4><div>';
   regTags.forEach(function(t){ html += '<span class="tag">'+t+'</span>'; });
   html += '</div></div>';
 
-  // Cryptographic proof section
   html += '<div class="section"><h4>Cryptographic Seal</h4>';
   html += '<div class="proof">';
   html += '<strong>Issuer:</strong> '+cert.issuer+'<br>';
@@ -616,7 +914,6 @@ function show(c) {
   html += '<strong>Anchor:</strong> '+cert.anchor+'<br>';
   html += '</div></div>';
 
-  // Deterministic proof section
   html += '<div class="section"><h4>Deterministic Proof</h4>';
   html += '<div class="proof">';
   html += '<strong>Input Hash:</strong> '+(proof.input_hash||'')+'<br>';
