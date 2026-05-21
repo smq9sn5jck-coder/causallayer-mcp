@@ -9,16 +9,8 @@
   "observability": {
     "enabled": true
   },
-  "routes": [
-    // All demo traffic lives under /try* — single namespace, zero risk of
-    // colliding with the main faultkey.com SPA or any other future API routes
-    {
-      "pattern": "faultkey.com/try",
-      "zone_name": "faultkey.com"
-    },
-    {
-      "pattern": "faultkey.com/try/*",
-      "zone_name": "faultkey.com"
-    }
-  ]
+  // No routes — the production faultkey.com/try is served by the
+  // faultkey-landing React app calling mcp.faultkey.com (the real engine).
+  // This Worker stays available only at faultkey-try-demo.workers.dev as
+  // a developer-facing engine sandbox, NOT as the primary demo.
 }
