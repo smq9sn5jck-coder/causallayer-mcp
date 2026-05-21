@@ -1,40 +1,69 @@
-# Security policy — CausalLayer MCP / FaultKey
+# Security Policy
 
-## Reporting a vulnerability
+## Supported Versions
 
-We take security seriously because this software exists to settle liability disputes. A trivially-forgeable certificate would defeat the entire premise of the protocol.
+| Version | Supported          |
+| ------- | ------------------ |
+| 1.x     | :white_check_mark: |
+| < 1.0   | :x:                |
 
-If you discover a vulnerability — particularly anything affecting:
+## Reporting a Vulnerability
 
-* **Signature verification** (Ed25519 batch checks, malleability, ASN.1 parsing).
-* **Merkle-proof construction or validation**.
-* **OpenTimestamps anchor verification**.
-* **Tenant isolation** (a request authenticated as tenant A reading tenant B's ledger).
-* **Determinism** (any path that produces a different certificate for the same inputs).
-* **MCP transport** (session-id forging, prompt-injection inside `params`, CORS bypass).
+We take the security of CausalLayer MCP seriously. If you believe you have found a security vulnerability, please report it responsibly.
 
-…please report it privately, **not** as a public GitHub issue.
+**Please do NOT report security vulnerabilities through public GitHub issues.**
 
-| Channel | Address |
-| --- | --- |
-| Email | `security@faultkey.com` |
-| GitHub Security Advisory | <https://github.com/smq9sn5jck-coder/causallayer-mcp/security/advisories/new> |
+Instead, please report them via one of these channels:
 
-We respond within **48 hours** and aim to patch within **7 days** for high-severity findings.
+1. **Email:** security@faultkey.com
+2. **GitHub Security Advisories:** [Report a vulnerability](https://github.com/smq9sn5jck-coder/causallayer-mcp/security/advisories/new)
+
+### What to include
+
+- Type of issue (e.g., buffer overflow, SQL injection, cross-site scripting, etc.)
+- Full paths of source file(s) related to the manifestation of the issue
+- The location of the affected source code (tag/branch/commit or direct URL)
+- Any special configuration required to reproduce the issue
+- Step-by-step instructions to reproduce the issue
+- Proof-of-concept or exploit code (if possible)
+- Impact of the issue, including how an attacker might exploit it
+
+### Response Timeline
+
+- **Acknowledgment:** Within 48 hours
+- **Initial assessment:** Within 5 business days
+- **Resolution target:** Within 30 days for critical issues
+
+### Disclosure Policy
+
+- We follow [coordinated vulnerability disclosure](https://en.wikipedia.org/wiki/Coordinated_vulnerability_disclosure)
+- We will credit reporters in our security advisories (unless anonymity is requested)
+- We ask that you give us reasonable time to address the issue before public disclosure
+
+## Security Measures
+
+This project implements:
+
+- **Cryptographic certificate signing** (HMAC-SHA256) for all CausalCertificates
+- **Input validation** on all MCP tool parameters
+- **No persistent storage** of incident data (stateless Worker architecture)
+- **Rate limiting** via Cloudflare
+- **Content Security Policy** headers on all responses
+- **OpenSSF Scorecard** continuous monitoring
+- **CodeQL** static analysis on every push
+- **Dependabot** automated dependency updates
 
 ## Scope
 
-In scope: this repository (`causallayer-mcp`) and the public demo Worker at `causallayer-mcp-demo.zykm9qkk7j.workers.dev`. Out of scope: third-party MCP clients (Claude Desktop, Cursor) — please report those upstream.
+The following are in scope for security reports:
 
-## Safe-harbour
+- The CausalLayer MCP Worker (`src/`)
+- Certificate generation and verification logic
+- The MCP protocol implementation
+- Authentication and authorization mechanisms
 
-Good-faith research conducted under this policy will not be subject to legal action. We will publicly credit reporters in release notes unless anonymity is requested.
+The following are **out of scope**:
 
-## Cryptographic primitives
-
-* Signing: **Ed25519** (RFC 8032).
-* Hashing: **SHA-256** for Merkle leaves and intermediate nodes.
-* Anchoring: **OpenTimestamps** (Bitcoin block-level timestamping, RFC-style proof).
-* Transport security: **TLS 1.3** terminated at Cloudflare's edge.
-
-A formal threat model lives in `docs/THREATS.md` (in preparation).
+- The landing page (faultkey.com) — report via email
+- Third-party dependencies (report to the upstream project)
+- Social engineering attacks

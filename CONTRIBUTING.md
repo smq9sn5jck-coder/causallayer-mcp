@@ -1,39 +1,81 @@
 # Contributing to CausalLayer MCP
 
-Thank you for your interest in contributing! This repository contains the open-source MCP server (Cloudflare Worker) and the `npx causallayer-mcp` CLI wrapper.
+Thank you for your interest in contributing to CausalLayer! This document provides guidelines and information for contributors.
 
-**Note:** The core CausalLayer engine (the deterministic liability math) is closed-source and runs upstream. This repository is strictly the MCP transport, billing, and edge-guardrail layer.
+## Quick Start
 
-## Development Setup
+```bash
+# Clone the repository
+git clone https://github.com/smq9sn5jck-coder/causallayer-mcp.git
+cd causallayer-mcp
 
-1. Clone the repo:
-   ```bash
-   git clone https://github.com/causallayer/causallayer-mcp.git
-   cd causallayer-mcp
-   ```
+# Install dependencies
+npm install
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+# Run tests
+npm test
 
-3. Run type-checks and tests:
-   ```bash
-   npx tsc --noEmit
-   npx vitest run
-   ```
+# Start local development
+npx wrangler dev
+```
 
-4. Run locally (free mode):
-   ```bash
-   npx wrangler dev
-   ```
+## How to Contribute
 
-## Pull Requests
+### Reporting Bugs
 
-- **Guardrails:** If you are adding a new guardrail (e.g., a new PII pattern), please add a test case in `test/demo.test.ts` or a new test file.
-- **Billing:** Changes to the Stripe ledger or x402 paths must pass the `test/billing.test.ts` suite.
-- **Formatting:** We use Prettier. Please format your code before submitting.
+- Use [GitHub Issues](https://github.com/smq9sn5jck-coder/causallayer-mcp/issues/new?template=bug_report.md)
+- Include steps to reproduce, expected vs actual behavior
+- Include your environment (OS, Node.js version, Wrangler version)
 
-## Security
+### Suggesting Features
 
-If you find a security vulnerability in the MCP server (e.g., a bypass of the PII scanner or a flaw in the credit ledger), please do NOT open a public issue. Email `security@causallayer.io` directly.
+- Check [existing issues](https://github.com/smq9sn5jck-coder/causallayer-mcp/issues) first
+- Use the [feature request template](https://github.com/smq9sn5jck-coder/causallayer-mcp/issues/new?template=feature_request.md)
+- Describe the use case and expected behavior
+
+### Pull Requests
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Run tests (`npm test`)
+5. Commit with [conventional commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, etc.)
+6. Push to your fork and open a PR
+
+### Areas We Need Help
+
+Check our [roadmap issues](https://github.com/smq9sn5jck-coder/causallayer-mcp/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap) for areas where contributions are especially welcome:
+
+- 🌏 **Jurisdiction modules** — Add regulatory mappings for new countries/regions
+- 🧪 **Test scenarios** — Industry-specific incident templates
+- 📖 **Documentation** — Tutorials, integration guides, translations
+- 🔌 **Client integrations** — Claude Desktop, Cursor, VS Code configurations
+- 📊 **Scoring models** — New attribution algorithms and weighting schemes
+
+## Code Style
+
+- TypeScript strict mode
+- ESLint + Prettier (run `npm run lint`)
+- Meaningful variable names over comments
+- Each MCP tool should be self-contained in its own module
+
+## Commit Messages
+
+We follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+feat: add Japanese jurisdiction module
+fix: correct liability split rounding error
+docs: add Claude Desktop integration guide
+test: add edge case for multi-party incidents
+chore: update wrangler to v4
+```
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the MIT License.
+
+## Questions?
+
+- Open a [Discussion](https://github.com/smq9sn5jck-coder/causallayer-mcp/discussions)
+- Email: contributors@faultkey.com
