@@ -25,7 +25,7 @@
  */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "causallayer-mcp",
+  "name": "causallayer-mcp-demo",
   "main": "src/index.ts",
   "compatibility_date": "2026-01-01",
   "compatibility_flags": ["nodejs_compat"],
