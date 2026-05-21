@@ -33,10 +33,10 @@ jobs:
         run: |
           set -e
           for f in server.json mcp.json package.json cli/package.json; do
-            [ -f "<LaTex>$f" ] && node -e "JSON.parse(require('fs').readFileSync('$</LaTex>f','utf8'))" && echo "  ok: <LaTex>$f"
+            [ -f "$f" ] && node -e "JSON.parse(require('fs').readFileSync('$f','utf8'))" && echo "  ok: $f"
           done
           for f in smithery.yaml openapi.yaml .github/dependabot.yml; do
-            [ -f "$</LaTex>f" ] && python3 -c "import yaml; yaml.safe_load(open('<LaTex>$f'))" && echo "  ok: $</LaTex>f"
+            [ -f "$f" ] && python3 -c "import yaml; yaml.safe_load(open('$f'))" && echo "  ok: $f"
           done
 
       - name: Verify CLI shim is executable
@@ -55,31 +55,31 @@ jobs:
         run: |
           set -e
           for url in https://mcp.faultkey.com/mcp https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp; do
-            echo "Probing <LaTex>$url ..."
-            RESP=$</LaTex>(curl -sS -X POST "$url" \
+            echo "Probing $url ..."
+            RESP=$(curl -sS -X POST "$url" \
               -H "Content-Type: application/json" \
               -H "Accept: application/json, text/event-stream" \
               --max-time 10 \
               -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}')
             echo "$RESP" | head -c 400
             echo ""
-            echo "<LaTex>$RESP" | grep -q '"causallayer-mcp"' && echo "  ✓ initialize OK on $</LaTex>url"
+            echo "$RESP" | grep -q '"causallayer-mcp"' && echo "  ✓ initialize OK on $url"
           done
 
       - name: Probe tools/list
         run: |
           set -e
-          RESP=<LaTex>$(curl -sS -X POST "https://mcp.faultkey.com/mcp" \
+          RESP=$(curl -sS -X POST "https://mcp.faultkey.com/mcp" \
             -H "Content-Type: application/json" \
             -H "Accept: application/json, text/event-stream" \
             --max-time 10 \
             -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
-          echo "$</LaTex>RESP" | head -c 600
+          echo "$RESP" | head -c 600
           echo ""
-          echo "<LaTex>$RESP" | grep -q "submit_incident" && echo "  ✓ submit_incident exposed"
-          echo "$</LaTex>RESP" | grep -q "verify_certificate" && echo "  ✓ verify_certificate exposed"
-          echo "<LaTex>$RESP" | grep -q "get_anchor_status" && echo "  ✓ get_anchor_status exposed"
-          echo "$</LaTex>RESP" | grep -q "query_issuer_registry" && echo "  ✓ query_issuer_registry exposed"
+          echo "$RESP" | grep -q "submit_incident" && echo "  ✓ submit_incident exposed"
+          echo "$RESP" | grep -q "verify_certificate" && echo "  ✓ verify_certificate exposed"
+          echo "$RESP" | grep -q "get_anchor_status" && echo "  ✓ get_anchor_status exposed"
+          echo "$RESP" | grep -q "query_issuer_registry" && echo "  ✓ query_issuer_registry exposed"
 
   docker:
     name: Docker build (Glama-compatible stdio image)
