@@ -33,6 +33,17 @@ The public Worker is deployed on Cloudflare's global edge network and is fully f
 - **Healthcheck:** [`/healthz`](https://faultkey-try-demo.zykm9qkk7j.workers.dev/try)
 - **Demand telemetry:** [`/stats`](https://mcp.faultkey.com/stats) (public, aggregated, no PII)
 
+## Install options
+
+This repo ships **two npm packages**, by design:
+
+| Package | Use when | Size | What it does |
+|---|---|---|---|
+| [`causallayer-mcp`](https://www.npmjs.com/package/causallayer-mcp) (unscoped) | You want a one-line `npx` install that connects to the live FaultKey demo Worker. **Recommended for Claude Desktop / Cursor / Cline / Continue / VS Code users.** | ~6 kB (one dep: `mcp-remote`) | Thin shim. Spawns `mcp-remote` pointed at `mcp.faultkey.com`. |
+| [`@faultkey/causallayer-mcp`](https://www.npmjs.com/package/@faultkey/causallayer-mcp) (scoped) | You want a self-hosted, zero-network, pure-Node MCP server. For air-gapped reviewers, regulators, corporate VDIs, or anyone who can't egress to `mcp.faultkey.com`. | ~MB (bundles `@modelcontextprotocol/sdk`) | Standalone: the deterministic scoring engine, ed25519 signer, and Merkle log writer all run locally. Never opens a network socket. |
+
+The Quick start below uses the thin shim. Self-hosters: see [Self-hosting](#self-hosting) for the scoped-package option.
+
 ## Quick start
 
 ### Claude Desktop
@@ -103,7 +114,28 @@ The math is published as an Australian Standards-aligned paper. The signed certi
 
 ## Self-hosting
 
-You can deploy your own copy to your own Cloudflare account if you want to enforce a corporate firewall, custom rate limits, or bring your own KV namespace:
+Three options, in increasing isolation:
+
+### Option 1 — Pure-Node standalone (no Cloudflare, no internet)
+
+For air-gapped reviewers, regulators, and corporate VDIs that cannot egress to `mcp.faultkey.com`. The scoped package bundles the deterministic scoring engine, ed25519 signer, and Merkle log writer; it never opens a network socket. Verdicts are byte-identical to the public Worker for the same input.
+
+```json
+{
+  "mcpServers": {
+    "faultkey": {
+      "command": "npx",
+      "args": ["-y", "@faultkey/causallayer-mcp"]
+    }
+  }
+}
+```
+
+The Bitcoin anchor step is naturally skipped offline; you can re-anchor offline-produced certificates later via `causallayer-verifier --reanchor`.
+
+### Option 2 — Self-host the Cloudflare Worker on your account
+
+When you want corporate-firewall rate limits, custom KV namespaces, or your own audit pipeline:
 
 ```bash
 git clone https://github.com/smq9sn5jck-coder/causallayer-mcp.git

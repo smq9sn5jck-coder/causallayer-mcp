@@ -1,6 +1,6 @@
 {
   "name": "causallayer-mcp",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "FaultKey \u00b7 CausalLayer MCP \u2014 one-line install for Claude Desktop, Cursor, Cline. Deterministic AI liability attribution with Bitcoin-anchored signed certificates.",
   "license": "Apache-2.0",
   "author": "FaultKey / CausalLayer",
@@ -44,7 +44,10 @@
   "engines": {
     "node": ">=18"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
-    "mcp-remote": "^0.1.10"
+    "mcp-remote": "^0.1.38"
   }
 }
