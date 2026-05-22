@@ -44,6 +44,7 @@ import {
 } from "./billing.js";
 import { handleAdmin } from "./admin.js";
 import { logEvent } from "./events.js";
+import { handleWellKnown } from "./well-known.js";
 import {
   buildRequestMeta,
   handleAdminStats,
@@ -686,12 +687,27 @@ export default {
         },
       });
     }
-    // ─── Interactive demo page ───────────────────────────────────────────────
+        // ─── Interactive demo page ───────────────────────────────────────────────
     if (url.pathname === "/try" && request.method === "GET") {
       const { serveTryPage } = await import("./try-page.js");
       return serveTryPage(request, env);
     }
-
+    // ─── MCP registry auto-discovery descriptors ─────────────────────────────
+    // /.well-known/mcp.json   (canonical MCP service descriptor)
+    // /.well-known/glama.json (glama.ai registry crawler reads this path)
+    // Returns a Response only for known descriptor paths; null otherwise.
+    {
+      const wk = handleWellKnown(url.pathname);
+      if (wk) {
+        await logEvent("api_request", request, env, ctx, {
+          request_path: url.pathname,
+          method: request.method,
+          response_status: wk.status,
+          duration_ms: Date.now() - t0,
+        });
+        return wk;
+      }
+    }
     // ─── Smithery / MCP registry server card ─────────────────────────────────
     if (url.pathname === "/.well-known/mcp/server-card.json") {
       return json({
@@ -814,20 +830,50 @@ export default {
       return res;
     }
 
-    // /admin/stats — ADMIN_TOKEN-gated; per-tenant + Cloudflare Workers Analytics
+        // /admin/stats — ADMIN_TOKEN-gated; per-tenant + Cloudflare Workers Analytics
+    //
+    // Hardening note: when no ADMIN_TOKEN is configured (or the provided
+    // token doesn't match), we return 404 instead of 401 so opportunistic
+    // scanners (we observed 30+ /admin/*, /metrics, /version etc. probes per
+    // day in production telemetry) get no signal that an admin surface even
+    // exists. The legitimate caller who has a valid token still gets a 200
+    // with the same payload as before.
+    //
+    // The failed attempt is still logged as `api_error` (with status 404) so
+    // /admin/stats traffic remains observable in /stats and /admin/stats.
     if (url.pathname === "/admin/stats") {
       const provided = request.headers.get("x-admin-token") ?? "";
       if (!env.ADMIN_TOKEN || provided !== env.ADMIN_TOKEN) {
-        return new Response(JSON.stringify({ error: "unauthorized" }), {
-          status: 401,
-          headers: { "content-type": "application/json" },
+        await logEvent("api_error", request, env, ctx, {
+          request_path: url.pathname,
+          method: request.method,
+          response_status: 404,
+          duration_ms: Date.now() - t0,
+          error_message: "admin_unauth_404",
         });
+        return json({ error: "not_found", path: url.pathname }, 404);
       }
       return handleAdminStats(env as Parameters<typeof handleAdminStats>[0]);
     }
-
     // Admin + /me
+    //
+    // Same hardening: any /admin/* path returns 404 to unauthenticated
+    // callers (no ADMIN_TOKEN set, or wrong token) before reaching
+    // handleAdmin. /me uses Bearer auth via handleAdmin and is unchanged.
     if (url.pathname === "/me" || url.pathname.startsWith("/admin/")) {
+      if (url.pathname.startsWith("/admin/")) {
+        const provided = request.headers.get("x-admin-token") ?? "";
+        if (!env.ADMIN_TOKEN || provided !== env.ADMIN_TOKEN) {
+          await logEvent("api_error", request, env, ctx, {
+            request_path: url.pathname,
+            method: request.method,
+            response_status: 404,
+            duration_ms: Date.now() - t0,
+            error_message: "admin_unauth_404",
+          });
+          return json({ error: "not_found", path: url.pathname }, 404);
+        }
+      }
       const res = await handleAdmin(env, request, url);
       // Distinguish login_success / login_failed for /me
       if (url.pathname === "/me") {
