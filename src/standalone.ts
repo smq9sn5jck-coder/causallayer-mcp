@@ -58,6 +58,14 @@ function hashInt(hash: string, offset: number, min: number, max: number): number
 
 import { applyEuRuleSet, euGateEngages, RULE_SET_VERSION as EU_RULE_SET_VERSION, type EuActor, type EuRuleFlags } from "./eu-rules.js";
 import { applyCascadeAttenuation, type CascadeAttenuationOutput } from "./cascade.js";
+import {
+  simulateRemediation,
+  REMEDIATION_CATALOG,
+  REMEDIATION_CATALOG_VERSION,
+  type FourFactorScoring as RemFourFactorScoring,
+  type VerdictShares as RemVerdictShares,
+  type RemediationInput,
+} from "./remediation.js";
 
 // ─── Input-sensitive scoring logic ─────────────────────────────────────────
 const SEVERITY_WEIGHTS: Record<string, number> = {
@@ -1025,6 +1033,74 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
     };
   }
 
+  // ── /api/v2/remediation/catalog ─────────────────────────────────────────
+  // Public, free read of the remediation catalog. Lets callers (and the
+  // demo UI) discover the available remediation IDs without having to
+  // hard-code them.
+  if (input.method === "GET" && input.path === "/api/v2/remediation/catalog") {
+    return {
+      ...base,
+      ruleId: "FK-METHOD-2026-003",
+      ruleName: "Counterfactual Remediation Simulator v1",
+      catalogVersion: REMEDIATION_CATALOG_VERSION,
+      remediations: Object.values(REMEDIATION_CATALOG).map((r) => ({
+        id: r.id,
+        label: r.label,
+        targetType: r.targetType,
+        factorDeltas: r.factorDeltas,
+        maxReductionPp: r.maxReductionPp,
+        citation: r.citation,
+        rationale: r.rationale,
+      })),
+    };
+  }
+
+  // ── /api/v2/remediation/simulate ────────────────────────────────────────
+  // Closed-form counterfactual: takes a verdict + four-factor scoring +
+  // a list of remediation IDs from the catalog and returns the apportioned
+  // shares under each remediation in isolation, plus the composite where
+  // they all stack. Pure deterministic; same inputs -> byte-identical
+  // output. See docs/simulate-remediation.md for the citable design doc.
+  if (input.method === "POST" && input.path === "/api/v2/remediation/simulate") {
+    const body = (input.body ?? {}) as Record<string, unknown>;
+    const verdict = body.verdict as RemVerdictShares | undefined;
+    const fourFactor = body.fourFactorScoring as RemFourFactorScoring | undefined;
+    const remediations = (body.remediations as RemediationInput[] | undefined) ?? [];
+    const agents = ((body.agents as Array<{ id: string; type?: string }> | undefined) ??
+      []).map((a) => ({ id: a.id, type: a.type }));
+
+    if (!verdict || !fourFactor) {
+      return {
+        ...base,
+        error: "missing_required_fields",
+        required: ["verdict", "fourFactorScoring"],
+        guidance:
+          "Submit the verdict block and the fourFactorScoring block from the certificate, plus the agents list and the remediations to simulate. GET /api/v2/remediation/catalog to discover valid remediation IDs.",
+      };
+    }
+    if (!Array.isArray(remediations) || remediations.length === 0) {
+      return {
+        ...base,
+        error: "no_remediations_supplied",
+        guidance:
+          "Submit at least one remediation in the `remediations` array. Each entry is { id: <catalog-id>, appliedToParty?: <agent-id> }. GET /api/v2/remediation/catalog for valid ids.",
+      };
+    }
+
+    const result = simulateRemediation({
+      verdict,
+      fourFactorScoring: fourFactor,
+      agents,
+      remediations,
+    });
+
+    return {
+      ...base,
+      ...result,
+      catalogVersion: REMEDIATION_CATALOG_VERSION,
+    };
+  }
+
   // ── /api/v2/verify/certificate ───────────────────────────────────────────
   if (input.method === "POST" && input.path === "/api/v2/verify/certificate") {
     const body = (input.body ?? {}) as Record<string, unknown>;
@@ -1161,6 +1237,9 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
     availableEndpoints: [
       { method: "POST", path: "/api/v1/incidents/analyze", description: "Submit incident for liability attribution" },
       { method: "POST", path: "/api/v2/verify/certificate", description: "Verify a CausalCertificate" },
+      { method: "POST", path: "/api/v2/verify/recompute", description: "Re-derive a certificate from canonical input and compare byte-for-byte" },
+      { method: "GET", path: "/api/v2/remediation/catalog", description: "List the FK-METHOD-2026-003 remediation catalog" },
+      { method: "POST", path: "/api/v2/remediation/simulate", description: "Simulate counterfactual apportionment under one or more remediations" },
       { method: "GET", path: "/api/v2/anchor/status", description: "Get anchor log status" },
       { method: "GET", path: "/api/v2/issuers", description: "Query issuer registry" },
       { method: "GET", path: "/api/v1/regulatory-lookup", description: "Regulatory framework lookup" },

@@ -820,6 +820,104 @@ export class CausalLayerMCP extends McpAgent<Env, unknown, SessionProps> {
       }
     );
 
+    // ── Tool 2c: simulate_remediation ──────────────────────────────────────
+    // Closed-form counterfactual remediation simulator (FK-METHOD-2026-003).
+    // Takes a verdict + four-factor scoring + agents + a list of remediation
+    // IDs from the catalog and returns the counterfactual apportionment
+    // under each remediation in isolation, plus the composite where they
+    // all stack. Pure deterministic. Citable: every remediation in the
+    // catalog cites a specific statute / standard / case.
+    this.server.registerTool(
+      "simulate_remediation",
+      {
+        description:
+          "Counterfactual remediation simulator. Given a certificate's verdict + " +
+          "fourFactorScoring + agents and a list of remediation IDs from the " +
+          "FK-METHOD-2026-003 catalog, return the apportioned shares each " +
+          "remediation would have produced (in isolation) and the composite " +
+          "shares if they all stack. Every remediation cites a specific statute " +
+          "or standard. GET /api/v2/remediation/catalog for the list of IDs. " +
+          `Cost: ${priceFor(env, "verify_certificate")} credit (same price as verify_certificate). ` +
+          "Pure deterministic; same inputs produce a byte-identical result.",
+        inputSchema: {
+          verdict: z
+            .object({
+              primaryParty: z.string(),
+              primaryShare: z.number().min(0).max(1),
+              secondary: z.array(
+                z.object({ party: z.string(), share: z.number().min(0).max(1) })
+              ),
+            })
+            .describe(
+              "The verdict block from the CausalCertificate."
+            ),
+          fourFactorScoring: z
+            .object({
+              primaryAgent: z.string(),
+              causalProximity: z.number().min(0).max(1),
+              behaviouralDeviation: z.number().min(0).max(1),
+              controllability: z.number().min(0).max(1),
+              regulatoryAlignment: z.number().min(0).max(1),
+              weights: z.object({
+                causalProximity: z.number(),
+                behaviouralDeviation: z.number(),
+                controllability: z.number(),
+                regulatoryAlignment: z.number(),
+              }),
+            })
+            .describe(
+              "The fourFactorScoring block from the CausalCertificate."
+            ),
+          agents: z
+            .array(z.object({ id: z.string(), type: z.string().optional() }))
+            .describe(
+              "Agent registry (id + type) so the simulator can map remediation targetType to specific party ids."
+            ),
+          remediations: z
+            .array(
+              z.object({
+                id: z.string(),
+                appliedToParty: z.string().optional(),
+              })
+            )
+            .min(1)
+            .describe(
+              "List of remediation IDs from the catalog (e.g. vendor_adversarial_eval_suite, deployer_human_in_loop). Each may optionally pin appliedToParty to a specific agent id."
+            ),
+        },
+      },
+      async ({ verdict, fourFactorScoring, agents, remediations }) => {
+        return withBilling(env, tenantId, "verify_certificate", meta, async () => {
+          const result = await callApi<Record<string, unknown>>(
+            env,
+            "POST",
+            "/api/v2/remediation/simulate",
+            { verdict, fourFactorScoring, agents, remediations }
+          );
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    env: env.CAUSALLAYER_ENV,
+                    tenant_id: tenantId,
+                    ...result,
+                    billing: {
+                      tool: "simulate_remediation",
+                      credits_charged: priceFor(env, "verify_certificate"),
+                    },
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }) as Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }>;
+      }
+    );
+
     // ── Tool 3: get_anchor_status (free) ───────────────────────────────────
     this.server.registerTool(
       "get_anchor_status",
