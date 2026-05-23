@@ -130,6 +130,13 @@ interface Event {
   timestamp?: string;
   actor_id?: string;
   description?: string;
+  // W3C Trace Context (optional). When the caller has OpenTelemetry,
+  // Jaeger, Zipkin, Datadog, or New Relic span data for this event, these
+  // fields let the certificate cite the exact span as evidence. The W3C
+  // spec mandates 32-hex trace_ids and 16-hex span_ids.
+  trace_id?: string;
+  span_id?: string;
+  trace_source?: "opentelemetry" | "jaeger" | "zipkin" | "datadog" | "newrelic" | "other";
 }
 
 function computePrimaryScore(
@@ -270,12 +277,43 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
       actor: e.actor_id ?? (agents[i % agents.length]?.id ?? "unknown"),
       description: e.description ?? `Event ${i + 1}`,
     }));
-    const causalEdges = events.slice(1).map((e, i) => ({
-      from: events[i]!.id,
-      to: e.id,
-      relation: "caused_by",
-      strength: hashFloat(hash, 32 + i * 2, 0.6, 0.95),
-    }));
+    const causalEdges = events.slice(1).map((e, i) => {
+      const fromEvent = events[i]!;
+      // W3C Trace Context evidence pointer — propagated when either the
+      // "from" or "to" event carried trace_id/span_id. The receiving event's
+      // span is the canonical evidence anchor for the edge (it is the span
+      // whose state was *caused by* the prior event), but we also carry the
+      // upstream span when present so a viewer can walk the trace tree.
+      const evidence: Record<string, string> | undefined = e.trace_id || e.span_id
+        ? {
+            ...(e.trace_id ? { trace_id: e.trace_id } : {}),
+            ...(e.span_id ? { span_id: e.span_id } : {}),
+            ...(fromEvent.span_id ? { caused_by_span_id: fromEvent.span_id } : {}),
+            ...(e.trace_source ? { source: e.trace_source } : {}),
+          }
+        : undefined;
+      return {
+        from: fromEvent.id,
+        to: e.id,
+        relation: "caused_by",
+        strength: hashFloat(hash, 32 + i * 2, 0.6, 0.95),
+        ...(evidence ? { evidence } : {}),
+      };
+    });
+    // Top-level trace_context block when at least one event carries a span.
+    // We pick the first non-empty trace_id we see as the canonical trace for
+    // this incident; mixed-trace incidents (rare) keep all span ids in order.
+    const tracedEvents = events.filter((e) => e.trace_id || e.span_id);
+    const traceContext = tracedEvents.length > 0
+      ? {
+          trace_id: tracedEvents.find((e) => !!e.trace_id)?.trace_id ?? null,
+          spans: tracedEvents
+            .filter((e) => !!e.span_id)
+            .map((e) => ({ event_id: e.id, span_id: e.span_id })),
+          source: tracedEvents.find((e) => !!e.trace_source)?.trace_source ?? "opentelemetry",
+          spec: "https://www.w3.org/TR/trace-context/",
+        }
+      : null;
     const rootCause = events.length > 0 ? events[0]!.id : "unknown";
     const butForChain = events.slice(0, Math.min(3, events.length)).map((e) => e.id);
 
@@ -711,6 +749,12 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
         rootCause,
         butForChain,
       },
+      // Optional W3C Trace Context evidence — only present when the caller
+      // supplied trace_id/span_id on at least one event. Lets a verifier cross-
+      // reference the certificate against the customer's existing OpenTelemetry
+      // / Jaeger / Datadog observability stack. Spec:
+      // https://www.w3.org/TR/trace-context/
+      ...(traceContext ? { traceContext } : {}),
       deviationTaxonomy: deviations,
       liabilityMode,
       fourFactorScoring: {

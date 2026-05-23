@@ -463,6 +463,25 @@ export class CausalLayerMCP extends McpAgent<Env, unknown, SessionProps> {
                 description: z
                   .string()
                   .min(1, "G3: every event must have a non-empty description"),
+                // ── Optional W3C Trace Context evidence ─────────────────────
+                // When the caller has OpenTelemetry / Jaeger / Datadog APM
+                // traces for this event, including the trace + span ids lets
+                // FaultKey emit a `causalGraph.edges[].evidence` pointer and a
+                // top-level `trace_context` block. The certificate then cites
+                // a specific span the way a court order cites a specific email
+                // ID. Backwards-compatible: events without these fields
+                // produce identical certificates to before.
+                trace_id: z
+                  .string()
+                  .regex(/^[0-9a-f]{32}$/i, "W3C trace_id must be 32 lowercase hex chars")
+                  .optional(),
+                span_id: z
+                  .string()
+                  .regex(/^[0-9a-f]{16}$/i, "W3C span_id must be 16 lowercase hex chars")
+                  .optional(),
+                trace_source: z
+                  .enum(["opentelemetry", "jaeger", "zipkin", "datadog", "newrelic", "other"])
+                  .optional(),
               })
             )
             .min(1, "G3: at least one event is required"),
@@ -996,8 +1015,32 @@ export default {
       const newHeaders = new Headers(mcpRes.headers);
       newHeaders.set("access-control-allow-origin", "*");
       newHeaders.set("access-control-allow-methods", "GET, POST, OPTIONS");
-      newHeaders.set("access-control-allow-headers", "content-type, authorization, mcp-session-id, accept");
-      newHeaders.set("access-control-expose-headers", "mcp-session-id");
+      newHeaders.set("access-control-allow-headers", "content-type, authorization, mcp-session-id, accept, traceparent, tracestate");
+      newHeaders.set("access-control-expose-headers", "mcp-session-id, traceparent, tracestate");
+
+      // ── W3C Trace Context propagation ─────────────────────────────────
+      // Spec: https://www.w3.org/TR/trace-context/
+      // If the calling agent supplied a traceparent header, we echo it so the
+      // FaultKey call appears as a span in the caller's trace. If not, we
+      // generate a fresh one (version=00, flags=01 sampled) so the caller can
+      // correlate this MCP exchange with whatever it does next. This makes
+      // FaultKey a first-class citizen of the customer's existing
+      // OpenTelemetry / Jaeger / Datadog observability stack at zero cost.
+      const inboundTp = request.headers.get("traceparent");
+      if (inboundTp && /^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/i.test(inboundTp)) {
+        newHeaders.set("traceparent", inboundTp);
+        const inboundTs = request.headers.get("tracestate");
+        if (inboundTs) newHeaders.set("tracestate", inboundTs);
+      } else {
+        const traceIdBytes = new Uint8Array(16);
+        const spanIdBytes = new Uint8Array(8);
+        crypto.getRandomValues(traceIdBytes);
+        crypto.getRandomValues(spanIdBytes);
+        const hex = (b: Uint8Array) =>
+          Array.from(b).map((x) => x.toString(16).padStart(2, "0")).join("");
+        newHeaders.set("traceparent", `00-${hex(traceIdBytes)}-${hex(spanIdBytes)}-01`);
+      }
+
       return new Response(mcpRes.body, {
         status: mcpRes.status,
         statusText: mcpRes.statusText,
