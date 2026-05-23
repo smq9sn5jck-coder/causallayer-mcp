@@ -1,0 +1,108 @@
+name: Publish to npm
+# Tag-driven release flow. From an iPhone:
+#   1. GitHub Mobile → Releases → "Draft a new release"
+#   2. Choose tag:
+#        cli-vX.Y.Z   → publishes /cli   → causallayer-mcp@X.Y.Z      (unscoped thin shim)
+#        pkg-vX.Y.Z   → publishes /      → @faultkey/causallayer-mcp@X.Y.Z (scoped standalone)
+#   3. "Publish release"
+#
+# Both jobs:
+#   - run a tag/version-consistency check so a typoed tag never publishes
+#   - run `npm pack --dry-run` first so a bad files: array fails before npm sees it
+#   - publish with `--provenance` so npmjs.com shows the green Sigstore-attested badge
+#
+# Required repo secret: NPM_TOKEN  (an npm "Automation" token from npmjs.com)
+on:
+  push:
+    tags:
+      - 'cli-v*'
+      - 'pkg-v*'
+
+permissions:
+  contents: read
+  id-token: write   # needed for OIDC sigstore provenance attestation
+
+jobs:
+  cli:
+    name: Publish causallayer-mcp (unscoped, /cli)
+    if: startsWith(github.ref, 'refs/tags/cli-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Verify tag matches cli/package.json version
+        working-directory: cli
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#cli-v}"
+          PKG=$(node -p "require('./package.json').version")
+          echo "tag=$TAG  package.json=$PKG"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match cli/package.json version $PKG. Bump cli/package.json first."
+            exit 1
+          fi
+
+      - name: Install (no workspaces, single package)
+        working-directory: cli
+        run: npm install --no-package-lock --no-audit --no-fund
+
+      - name: Pack dry-run
+        working-directory: cli
+        run: npm pack --dry-run
+
+      - name: Publish to npm with provenance
+        working-directory: cli
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  pkg:
+    name: Publish @faultkey/causallayer-mcp (scoped, root)
+    if: startsWith(github.ref, 'refs/tags/pkg-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Verify tag matches root package.json version
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#pkg-v}"
+          PKG=$(node -p "require('./package.json').version")
+          echo "tag=$TAG  package.json=$PKG"
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match root package.json version $PKG. Bump package.json first."
+            exit 1
+          fi
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false --ignore-scripts
+
+      - name: Build dist/
+        run: pnpm run build:npm
+
+      - name: Verify dist/standalone.js shebang and is executable
+        run: |
+          set -euo pipefail
+          test -f dist/standalone.js
+          head -1 dist/standalone.js | grep -q "^#!/usr/bin/env node"
+          chmod +x dist/standalone.js
+
+      - name: Pack dry-run
+        run: npm pack --dry-run
+
+      - name: Publish to npm with provenance
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

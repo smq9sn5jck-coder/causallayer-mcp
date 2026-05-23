@@ -1,13 +1,14 @@
 {
   "name": "@faultkey/causallayer-mcp",
-  "version": "0.4.0",
-  "description": "Model Context Protocol server for CausalLayer \u2014 deterministic AI liability attribution with Bitcoin-anchored, signed certificates. Runs on Cloudflare Workers or locally via npx.",
+  "version": "0.5.0",
+  "description": "Air-gapped, pure-Node Model Context Protocol server for FaultKey · CausalLayer — deterministic AI liability attribution. Runs entirely offline via stdio; never opens a network socket. For end-users who want a one-line connection to the public demo, use the unscoped `causallayer-mcp` package instead.",
   "private": false,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
-  "main": "dist/standalone.js",
+  "main": "dist/standalone-mcp-stdio.js",
   "bin": {
-    "causallayer-mcp": "./dist/standalone.js"
+    "causallayer-mcp": "./dist/standalone-mcp-stdio.js",
+    "faultkey-mcp": "./dist/standalone-mcp-stdio.js"
   },
   "files": [
     "dist/",
@@ -44,7 +45,7 @@
     "url": "https://github.com/smq9sn5jck-coder/causallayer-mcp/issues"
   },
   "scripts": {
-    "build:npm": "esbuild src/standalone.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/standalone.js --banner:js=\"#!/usr/bin/env node\" --external:@modelcontextprotocol/sdk",
+    "build:npm": "esbuild src/standalone-mcp-stdio.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/standalone-mcp-stdio.js --banner:js=\"#!/usr/bin/env node\"",
     "prepublishOnly": "pnpm run build:npm",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
