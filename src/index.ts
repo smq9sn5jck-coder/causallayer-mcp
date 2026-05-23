@@ -626,7 +626,71 @@ export class CausalLayerMCP extends McpAgent<Env, unknown, SessionProps> {
       }
     );
 
-    // ── Tool 1b: submit_otel_trace ────────────────────────────
+    // ── Tool 2b: verify_certificate_recompute ───────────────────
+    // Third-party-replicable verification: re-runs the engine on the supplied
+    // canonical input and compares byte-for-byte against the claimed cert.
+    // Requires no trust in the issuer or signing key.
+    this.server.registerTool(
+      "verify_certificate_recompute",
+      {
+        description:
+          "Independently re-derive a CausalCertificate from its canonical input " +
+          "and compare byte-for-byte against the claimed certificate. This is the " +
+          "strongest verification path: it requires no trust in the issuer or signing key. " +
+          `Cost: ${priceFor(env, "verify_certificate")} credit (same price as verify_certificate). ` +
+          "Returns PASS only if every checked field (certificateId, request_hash, merkleRoot, " +
+          "verdict, causalGraph, fourFactorScoring, deviationTaxonomy, euRuleOverlay, " +
+          "cascadeAttenuation, damages, underwriting) matches identically.",
+        inputSchema: {
+          certificate: z
+            .record(z.unknown())
+            .describe("The CausalCertificate object claimed by the issuer."),
+          canonicalInput: z
+            .record(z.unknown())
+            .describe(
+              "The original incident body that produced the certificate — the same JSON " +
+              "originally posted to submit_incident or submit_otel_trace."
+            ),
+        },
+      },
+      async ({ certificate, canonicalInput }) => {
+        return withBilling(env, tenantId, "verify_certificate", meta, async () => {
+          const result = await callApi<Record<string, unknown>>(
+            env,
+            "POST",
+            "/api/v2/verify/recompute",
+            { certificate, canonicalInput }
+          );
+
+          const verification = (result.verification as Record<string, unknown> | undefined) ?? {};
+          const verified = verification.verified === true;
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    env: env.CAUSALLAYER_ENV,
+                    tenant_id: tenantId,
+                    ...result,
+                    policy_outcome: verified ? "PASS" : "FAIL",
+                    billing: {
+                      tool: "verify_certificate_recompute",
+                      credits_charged: priceFor(env, "verify_certificate"),
+                    },
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }) as Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }>;
+      }
+    );
+
+    // ── Tool 1b: submit_otel_trace ──────────────────────────
     // Same engine as submit_incident, but accepts an OTLP JSON trace export
     // directly. Each span becomes a FaultKey event; service.name groups
     // spans into agents; W3C trace_id and span_id propagate as evidence
