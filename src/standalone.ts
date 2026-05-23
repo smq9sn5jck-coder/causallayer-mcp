@@ -667,7 +667,14 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
     const outputHash = await hashHex(
       JSON.stringify({ primaryScore, totalCents, verdictKind, audit_steps: auditTrail.length })
     );
-    const certificateId = await hashHex(inputHash + outputHash + base._demo_generated_at);
+    // Cert id MUST be a pure function of canonical input + canonical output.
+    // Previously included base._demo_generated_at (wall-clock), which broke the
+    // determinism guarantee: same canonical input → same certificateId.
+    // Engine version + ruleset version are mixed in so a future engine bump
+    // produces a new id namespace cleanly. See issue #42.
+    const certificateId = await hashHex(
+      inputHash + outputHash + "0.5.0-demo" + "global-v1"
+    );
 
     // Timing (event-count-sensitive)
     const totalMs = 120 + events.length * 12 + agents.length * 8;
