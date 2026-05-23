@@ -918,6 +918,139 @@ export class CausalLayerMCP extends McpAgent<Env, unknown, SessionProps> {
       }
     );
 
+    // ── Tool 2d: query_jurisdiction_overlay ──────────────────────────────
+    // FK-METHOD-2026-004: side-by-side comparison of the same canonical
+    // apportionment under AU, EU, US, UK, and CA legal regimes. EU and AU
+    // have full overlays grounded in real statute; US/UK/CA are research
+    // stubs in v1 (the response marks `is_stub: true` and the warning
+    // `stub_pending_research:<jx>` is emitted). Pure deterministic.
+    this.server.registerTool(
+      "query_jurisdiction_overlay",
+      {
+        description:
+          "Multi-jurisdiction overlay (FK-METHOD-2026-004). Given a canonical " +
+          "attributable apportionment (party-id -> share), the union of all " +
+          "jurisdiction role tags on each actor, and the union of " +
+          "jurisdiction-specific flags, return side-by-side post-overlay " +
+          "shares for AU, EU, US, UK, CA (or a chosen subset) with the " +
+          "specific rules that fired in each, citation URLs, and a parties × " +
+          "jurisdictions matrix. v1 ships full implementations for AU and EU; " +
+          "US/UK/CA are research stubs marked `is_stub: true`. Use GET " +
+          "/api/v2/jurisdiction/catalog to discover support and stub status. " +
+          `Cost: ${priceFor(env, "verify_certificate")} credit. Pure deterministic.`,
+        inputSchema: {
+          attributable: z
+            .record(z.string(), z.number().min(0).max(1))
+            .describe(
+              "Canonical pre-overlay apportionment as { party_id: share }. Sum should approximate 1.0; the function renormalises within tolerance."
+            ),
+          actors: z
+            .array(
+              z.object({
+                id: z.string(),
+                type: z.enum([
+                  "ai_system",
+                  "vendor",
+                  "deployer",
+                  "human_operator",
+                  "user",
+                  "third_party",
+                ]),
+                eu_chain_member: z
+                  .array(
+                    z.enum([
+                      "manufacturer",
+                      "authorised_representative",
+                      "importer",
+                      "fulfilment_service_provider",
+                      "distributor",
+                      "online_platform_self_supplier",
+                      "substantial_modifier",
+                    ])
+                  )
+                  .optional(),
+                eu_resident: z.boolean().optional(),
+                apra_regulated: z.boolean().optional(),
+                acl_supplier: z.boolean().optional(),
+                unrecoverable: z.boolean().optional(),
+              })
+            )
+            .describe(
+              "All actors with the union of jurisdiction-specific role tags. EU and AU tags coexist on the same actor record."
+            ),
+          flags: z
+            .object({
+              high_risk_ai: z.boolean().optional(),
+              pld_compensable_damage: z.boolean().optional(),
+              deployer_used_contrary_to_instructions: z.boolean().optional(),
+              human_oversight_unassigned_or_unqualified: z.boolean().optional(),
+              human_oversight_nominally_assigned_not_present: z.boolean().optional(),
+              deployer_input_data_unrepresentative: z.boolean().optional(),
+              deployer_ignored_risk_signal: z.boolean().optional(),
+              deployer_failed_serious_incident_notification: z.boolean().optional(),
+              deployer_destroyed_logs: z.boolean().optional(),
+              deployer_employer_no_worker_notice: z.boolean().optional(),
+              deployer_public_authority_unregistered: z.boolean().optional(),
+              provider_failed_to_supply_instructions: z.boolean().optional(),
+              provider_breach_was_unforeseeable: z.boolean().optional(),
+              ai_is_opaque_black_box: z.boolean().optional(),
+              defendant_failed_disclosure_order: z.boolean().optional(),
+              substantial_modification_present: z.boolean().optional(),
+              substantial_modification_severity: z.number().min(0).max(1).optional(),
+              acl_major_failure: z.boolean().optional(),
+              is_apra_regulated_service: z.boolean().optional(),
+              cps230_thirdparty_breach: z.boolean().optional(),
+              cps230_operational_breach: z.boolean().optional(),
+              vaiss_adherent: z.boolean().optional(),
+              vendor_no_docs: z.boolean().optional(),
+            })
+            .describe(
+              "Union of jurisdiction-specific flags. AI Act / PLD flags drive the EU overlay; ACL / CPS 230 / VAISS flags drive the AU overlay."
+            ),
+          jurisdictions: z
+            .array(z.enum(["AU", "EU", "US", "UK", "CA"]))
+            .optional()
+            .describe("Optional subset to compute. Defaults to all five."),
+          primaryJurisdiction: z
+            .string()
+            .optional()
+            .describe(
+              "Engine-level jurisdiction string (e.g. 'EU', 'DE', 'AU'). Used by the EU gate to decide engagement."
+            ),
+        },
+      },
+      async ({ attributable, actors, flags, jurisdictions, primaryJurisdiction }) => {
+        return withBilling(env, tenantId, "verify_certificate", meta, async () => {
+          const result = await callApi<Record<string, unknown>>(
+            env,
+            "POST",
+            "/api/v2/jurisdiction/overlay",
+            { attributable, actors, flags, jurisdictions, primaryJurisdiction }
+          );
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    env: env.CAUSALLAYER_ENV,
+                    tenant_id: tenantId,
+                    ...result,
+                    billing: {
+                      tool: "query_jurisdiction_overlay",
+                      credits_charged: priceFor(env, "verify_certificate"),
+                    },
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }) as Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }>;
+      }
+    );
+
     // ── Tool 3: get_anchor_status (free) ───────────────────────────────────
     this.server.registerTool(
       "get_anchor_status",

@@ -66,6 +66,13 @@ import {
   type VerdictShares as RemVerdictShares,
   type RemediationInput,
 } from "./remediation.js";
+import {
+  compareJurisdictions,
+  SUPPORTED_JURISDICTIONS,
+  JURISDICTION_OVERLAY_VERSION,
+  type CompareInput as JxCompareInput,
+  type JurisdictionCode,
+} from "./jurisdiction.js";
 
 // ─── Input-sensitive scoring logic ─────────────────────────────────────────
 const SEVERITY_WEIGHTS: Record<string, number> = {
@@ -1033,6 +1040,99 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
     };
   }
 
+  // ── /api/v2/jurisdiction/catalog ──────────────────────────────────────
+  // Public, free read of the supported jurisdictions and which ones are
+  // research stubs in v1. Lets callers make an informed decision about
+  // which jurisdictions to include in compare requests.
+  if (input.method === "GET" && input.path === "/api/v2/jurisdiction/catalog") {
+    return {
+      ...base,
+      ruleId: "FK-METHOD-2026-004",
+      ruleName: "Multi-Jurisdiction Overlay v1",
+      catalogVersion: JURISDICTION_OVERLAY_VERSION,
+      jurisdictions: SUPPORTED_JURISDICTIONS.map((jx) => ({
+        code: jx,
+        name:
+          jx === "AU"
+            ? "Australia"
+            : jx === "EU"
+              ? "European Union / EEA"
+              : jx === "US"
+                ? "United States"
+                : jx === "UK"
+                  ? "United Kingdom"
+                  : "Canada",
+        is_stub: jx === "US" || jx === "UK" || jx === "CA",
+        rule_set_version:
+          jx === "EU"
+            ? "eu-v1"
+            : jx === "AU"
+              ? "au-v1"
+              : `${jx.toLowerCase()}-stub-v1`,
+        primary_authorities:
+          jx === "AU"
+            ? [
+                "Civil Liability Act 2002 (NSW) Pt 4",
+                "Australian Consumer Law (Sch. 2 CCA 2010) §§54-59, 64-64A",
+                "APRA CPS 230 §§17-22, 31",
+                "DISR Voluntary AI Safety Standard (Sept 2024)",
+              ]
+            : jx === "EU"
+              ? [
+                  "AI Act (Reg. 2024/1689) Arts. 9, 13, 26",
+                  "Revised Product Liability Directive 2024/2853 Arts. 6-12",
+                ]
+              : jx === "US"
+                ? [
+                    "Restatement (Third) of Torts: Apportionment §§7-9",
+                    "Restatement (Third) of Torts: Products Liability §2(c)",
+                  ]
+                : jx === "UK"
+                  ? ["Consumer Protection Act 1987 Pt I", "AI (Regulation) Bill HL 11 (2024)"]
+                  : ["AIDA (Bill C-27 Pt 3)", "PIPEDA (RSC 1985 c. P-8.6)"],
+      })),
+    };
+  }
+
+  // ── /api/v2/jurisdiction/overlay ──────────────────────────────────────
+  // Multi-jurisdiction comparison. Takes a canonical attributable map
+  // (party-id → share, sums to 1.0), the actor list with all jurisdiction
+  // role tags, the union of all jurisdiction-specific flags, and an
+  // optional list of target jurisdictions. Returns side-by-side post-
+  // overlay shares per jurisdiction plus the rules that fired in each.
+  // FK-METHOD-2026-004; pure deterministic.
+  if (input.method === "POST" && input.path === "/api/v2/jurisdiction/overlay") {
+    const body = (input.body ?? {}) as Record<string, unknown>;
+    const attributable = body.attributable as Record<string, number> | undefined;
+    const actors = (body.actors as JxCompareInput["actors"] | undefined) ?? [];
+    const flags = (body.flags as JxCompareInput["flags"] | undefined) ?? ({} as JxCompareInput["flags"]);
+    const jurisdictions = body.jurisdictions as JurisdictionCode[] | undefined;
+    const primaryJurisdiction = body.primaryJurisdiction as string | undefined;
+
+    if (!attributable || Object.keys(attributable).length === 0) {
+      return {
+        ...base,
+        error: "missing_required_fields",
+        required: ["attributable", "actors"],
+        guidance:
+          "Submit { attributable: { party_id: share, ... }, actors: [...], flags: {...} }. Optionally jurisdictions: ['AU','EU',...]. GET /api/v2/jurisdiction/catalog for supported jurisdictions and stub status.",
+      };
+    }
+
+    const result = compareJurisdictions({
+      attributable,
+      actors,
+      flags,
+      jurisdictions,
+      primaryJurisdiction,
+    });
+
+    return {
+      ...base,
+      ...result,
+    };
+  }
+
   // ── /api/v2/remediation/catalog ─────────────────────────────────────────
   // Public, free read of the remediation catalog. Lets callers (and the
   // demo UI) discover the available remediation IDs without having to
@@ -1240,6 +1340,8 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
       { method: "POST", path: "/api/v2/verify/recompute", description: "Re-derive a certificate from canonical input and compare byte-for-byte" },
       { method: "GET", path: "/api/v2/remediation/catalog", description: "List the FK-METHOD-2026-003 remediation catalog" },
       { method: "POST", path: "/api/v2/remediation/simulate", description: "Simulate counterfactual apportionment under one or more remediations" },
+      { method: "GET", path: "/api/v2/jurisdiction/catalog", description: "List supported jurisdictions and which overlays are research stubs in v1" },
+      { method: "POST", path: "/api/v2/jurisdiction/overlay", description: "Compare apportionment side-by-side across AU, EU, US, UK, CA (FK-METHOD-2026-004)" },
       { method: "GET", path: "/api/v2/anchor/status", description: "Get anchor log status" },
       { method: "GET", path: "/api/v2/issuers", description: "Query issuer registry" },
       { method: "GET", path: "/api/v1/regulatory-lookup", description: "Regulatory framework lookup" },
