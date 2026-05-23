@@ -1,0 +1,286 @@
+[
+  {
+    "id": "healthcare",
+    "label": "Healthcare — AI Dosage Error",
+    "damages": "$125,000 AUD",
+    "jurisdiction": "AU",
+    "incident": {
+      "title": "AI chatbot gave incorrect medical dosage advice to patient",
+      "description": "Healthcare chatbot deployed by MedAssist Corp (powered by GPT-5) recommended doubling a patient's blood thinner dosage without disclaimers.",
+      "severity": "critical",
+      "jurisdiction": "AU",
+      "financial_impact_cents": 12500000,
+      "currency": "AUD",
+      "category": "healthcare",
+      "deterministic_only": true,
+      "agents": [
+        { "id": "vendor-1", "name": "OpenAI GPT-5", "type": "vendor", "vendor_name": "OpenAI" },
+        { "id": "deployer-1", "name": "MedAssist Corp", "type": "deployer", "operator_role": "deployer" },
+        { "id": "user-1", "name": "Patient (anonymous)", "type": "user", "operator_role": "user" }
+      ],
+      "events": [
+        { "id": "e1", "type": "user_query", "timestamp": "2026-05-19T09:12:00Z", "description": "Patient asks about blood thinner dosage adjustment" },
+        { "id": "e2", "type": "model_response", "timestamp": "2026-05-19T09:12:02Z", "description": "GPT-5 recommends doubling the dose without disclaimer" },
+        { "id": "e3", "type": "user_action", "timestamp": "2026-05-19T09:15:00Z", "description": "Patient takes doubled dose" },
+        { "id": "e4", "type": "adverse_event", "timestamp": "2026-05-19T14:30:00Z", "description": "Patient hospitalised with bleeding complications" }
+      ]
+    }
+  },
+  {
+    "id": "finance",
+    "label": "Finance — Autonomous Trading Loss",
+    "damages": "$4,200,000 USD",
+    "jurisdiction": "US",
+    "incident": {
+      "title": "Autonomous trading bot caused $4.2M loss on misinterpreted signal",
+      "description": "AI trading system deployed by QuantEdge Capital misinterpreted a Fed announcement as bearish, opened massive leveraged short position. Human oversight was configured but kill-switch threshold was set too high.",
+      "severity": "critical",
+      "jurisdiction": "US",
+      "financial_impact_cents": 420000000,
+      "currency": "USD",
+      "category": "financial_services",
+      "deterministic_only": true,
+      "agents": [
+        { "id": "vendor-1", "name": "Anthropic Claude Trading", "type": "ai_system", "vendor_name": "Anthropic", "model_id": "claude-4-trading" },
+        { "id": "deployer-1", "name": "QuantEdge Capital", "type": "deployer", "operator_role": "deployer" },
+        { "id": "operator-1", "name": "Risk Desk Analyst", "type": "human_operator", "operator_role": "auditor" }
+      ],
+      "events": [
+        { "id": "e1", "type": "market_signal", "timestamp": "2026-05-18T14:30:00Z", "description": "Fed announces rate decision — AI interprets as strongly bearish" },
+        { "id": "e2", "type": "model_decision", "timestamp": "2026-05-18T14:30:01Z", "description": "Trading bot opens $4.2M leveraged short on S&P futures" },
+        { "id": "e3", "type": "oversight_failure", "timestamp": "2026-05-18T14:30:05Z", "description": "Kill-switch threshold not triggered (set at $5M)" },
+        { "id": "e4", "type": "market_move", "timestamp": "2026-05-18T14:45:00Z", "description": "Market rallies 2.3% — position underwater" },
+        { "id": "e5", "type": "forced_liquidation", "timestamp": "2026-05-18T15:01:00Z", "description": "Margin call triggers forced liquidation at maximum loss" }
+      ]
+    }
+  },
+  {
+    "id": "legal",
+    "label": "Legal — AI Contract Hallucination",
+    "damages": "£620,000 GBP",
+    "jurisdiction": "UK",
+    "incident": {
+      "title": "AI legal assistant hallucinated contract clause causing £620K loss",
+      "description": "LegalMind AI (deployed by Baker & Sterling LLP) generated a merger agreement containing a fabricated non-compete exemption clause. The client relied on this clause in negotiations, which was later invalidated in arbitration.",
+      "severity": "high",
+      "jurisdiction": "UK",
+      "financial_impact_cents": 62000000,
+      "currency": "GBP",
+      "category": "legal",
+      "deterministic_only": true,
+      "agents": [
+        { "id": "vendor-1", "name": "LegalMind AI v3", "type": "ai_system", "vendor_name": "LegalMind Inc" },
+        { "id": "deployer-1", "name": "Baker & Sterling LLP", "type": "deployer", "operator_role": "deployer" },
+        { "id": "user-1", "name": "Client (AcquireCo)", "type": "user", "operator_role": "user" }
+      ],
+      "events": [
+        { "id": "e1", "type": "user_request", "timestamp": "2026-04-10T10:00:00Z", "description": "Associate requests AI draft of merger non-compete clause" },
+        { "id": "e2", "type": "model_response", "timestamp": "2026-04-10T10:00:03Z", "description": "AI generates clause citing non-existent 'Thornton v. Meridian (2019)' exemption" },
+        { "id": "e3", "type": "review_failure", "timestamp": "2026-04-10T14:00:00Z", "description": "Senior partner approves draft without verifying cited precedent" },
+        { "id": "e4", "type": "adverse_event", "timestamp": "2026-05-02T00:00:00Z", "description": "Arbitration panel invalidates clause — client loses negotiating position" }
+      ]
+    }
+  },
+  {
+    "id": "av",
+    "label": "Autonomous Vehicles — Pedestrian Incident",
+    "damages": "€890,000 EUR",
+    "jurisdiction": "EU",
+    "incident": {
+      "title": "Autonomous vehicle failed to detect and brake for pedestrian",
+      "description": "Level 4 self-driving taxi operated by RideAuto GmbH (Wayve perception stack) failed to detect a pedestrian in a marked crosswalk during rain. Contributing factors: sensor occlusion from water droplets and a regression in the latest perception model update.",
+      "severity": "critical",
+      "jurisdiction": "EU",
+      "financial_impact_cents": 89000000,
+      "currency": "EUR",
+      "category": "autonomous_vehicles",
+      "deterministic_only": true,
+      "agents": [
+        { "id": "vendor-1", "name": "Wayve Perception v4.2", "type": "ai_system", "vendor_name": "Wayve" },
+        { "id": "deployer-1", "name": "RideAuto GmbH", "type": "deployer", "operator_role": "deployer" },
+        { "id": "third-party-1", "name": "LiDAR Supplier (Luminar)", "type": "third_party", "operator_role": "vendor" }
+      ],
+      "events": [
+        { "id": "e1", "type": "environmental_condition", "timestamp": "2026-05-15T19:42:00Z", "description": "Heavy rain causes partial LiDAR point cloud degradation" },
+        { "id": "e2", "type": "perception_failure", "timestamp": "2026-05-15T19:42:03Z", "description": "Perception model classifies pedestrian as static object (confidence 0.31)" },
+        { "id": "e3", "type": "decision_failure", "timestamp": "2026-05-15T19:42:04Z", "description": "Planning module does not initiate emergency braking" },
+        { "id": "e4", "type": "collision", "timestamp": "2026-05-15T19:42:05Z", "description": "Vehicle strikes pedestrian at 38 km/h in marked crosswalk" }
+      ]
+    }
+  },
+  {
+    "id": "copilot",
+    "label": "Code Copilot — Security Vulnerability",
+    "damages": "$2,100,000 USD",
+    "jurisdiction": "US",
+    "incident": {
+      "title": "AI copilot introduced SQL injection vulnerability exploited in production",
+      "description": "GitHub Copilot suggested an unparameterised SQL query for a user search endpoint. The developer at TechStartup Inc accepted the suggestion. Code passed peer review and shipped. Attacker exploited the SQLi within 48 hours, exfiltrating 340K user records.",
+      "severity": "high",
+      "jurisdiction": "US",
+      "financial_impact_cents": 210000000,
+      "currency": "USD",
+      "category": "cybersecurity",
+      "deterministic_only": true,
+      "agents": [
+        { "id": "vendor-1", "name": "GitHub Copilot", "type": "ai_system", "vendor_name": "GitHub/Microsoft", "model_id": "copilot-v2" },
+        { "id": "deployer-1", "name": "TechStartup Inc", "type": "deployer", "operator_role": "deployer" },
+        { "id": "user-1", "name": "Developer (J. Smith)", "type": "human_operator", "operator_role": "user" }
+      ],
+      "events": [
+        { "id": "e1", "type": "code_suggestion", "timestamp": "2026-04-28T11:20:00Z", "description": "Copilot suggests unparameterised SQL query for /api/users/search" },
+        { "id": "e2", "type": "user_acceptance", "timestamp": "2026-04-28T11:20:05Z", "description": "Developer accepts suggestion without modification" },
+        { "id": "e3", "type": "review_failure", "timestamp": "2026-04-29T09:00:00Z", "description": "Peer reviewer approves PR — misses SQL injection pattern" },
+        { "id": "e4", "type": "deployment", "timestamp": "2026-04-29T14:00:00Z", "description": "Vulnerable code deployed to production" },
+        { "id": "e5", "type": "exploitation", "timestamp": "2026-05-01T03:15:00Z", "description": "Attacker exploits SQLi — exfiltrates 340K user records" }
+      ]
+    }
+  },
+  {
+    "id": "insurance",
+    "label": "Insurance — Automated Claim Denial",
+    "damages": "$3,400,000 AUD",
+    "jurisdiction": "AU",
+    "incident": {
+      "title": "AI claims system systematically denied valid disability insurance claims",
+      "description": "InsureAI deployed by National Coverage Ltd automatically denied 2,300 valid disability claims over 6 months. The model was trained on historical data that reflected human adjudicator bias against certain conditions. Affected claimants suffered financial hardship.",
+      "severity": "critical",
+      "jurisdiction": "AU",
+      "financial_impact_cents": 340000000,
+      "currency": "AUD",
+      "category": "insurance",
+      "deterministic_only": true,
+      "agents": [
+        { "id": "vendor-1", "name": "InsureAI Claims Engine v2", "type": "ai_system", "vendor_name": "InsureAI Pty Ltd" },
+        { "id": "deployer-1", "name": "National Coverage Ltd", "type": "deployer", "operator_role": "deployer" },
+        { "id": "user-1", "name": "Claimants (class, n=2300)", "type": "user", "operator_role": "user" }
+      ],
+      "events": [
+        { "id": "e1", "type": "model_deployment", "timestamp": "2025-11-01T00:00:00Z", "description": "InsureAI Claims Engine v2 deployed without bias audit" },
+        { "id": "e2", "type": "systematic_denial", "timestamp": "2025-11-15T00:00:00Z", "description": "System begins denying valid claims at 3x historical rate" },
+        { "id": "e3", "type": "oversight_failure", "timestamp": "2026-02-01T00:00:00Z", "description": "Quality assurance team fails to flag anomalous denial rate for 3 months" },
+        { "id": "e4", "type": "class_action", "timestamp": "2026-05-01T00:00:00Z", "description": "Class action filed on behalf of 2,300 wrongly denied claimants" }
+      ]
+    }
+  },
+  {
+    "id": "medical-misdiagnosis",
+    "label": "Medical AI — Radiology Misdiagnosis",
+    "damages": "£1,850,000 GBP",
+    "jurisdiction": "UK",
+    "incident": {
+      "title": "NHS-deployed radiology AI misclassified malignant tumour as benign — 11-month delay in cancer diagnosis",
+      "description": "RadioMind CADx (FDA 510(k) cleared, MHRA-registered Class IIa SaMD) deployed by Northern NHS Trust as a second-reader on chest CT scans labelled an 18mm spiculated nodule BENIGN with confidence 0.94. The reporting registrar concurred without escalation. 11 months later, the same patient presented symptomatically; the nodule had grown to 47mm and metastasised to mediastinal nodes (stage IIIa lung adenocarcinoma).",
+      "severity": "critical",
+      "jurisdiction": "UK",
+      "financial_impact_cents": 185000000,
+      "currency": "GBP",
+      "category": "healthcare",
+      "deterministic_only": true,
+      "agents": [
+        { "id": "vendor-1", "name": "RadioMind Inc.", "type": "vendor", "vendor_name": "RadioMind Inc.", "model_id": "radiomind-cadx-v3.1" },
+        { "id": "ai-1", "name": "RadioMind CADx v3.1", "type": "ai_system", "model_id": "radiomind-cadx-v3.1" },
+        { "id": "deployer-1", "name": "Northern NHS Trust", "type": "deployer", "operator_role": "deployer" },
+        { "id": "operator-1", "name": "Reporting Registrar (Dr A. Patel)", "type": "human_operator", "operator_role": "user" }
+      ],
+      "events": [
+        { "id": "e1", "type": "model_inference", "timestamp": "2025-06-08T11:02:14Z", "description": "RadioMind CADx returns label=BENIGN, confidence=0.94 on 18mm spiculated nodule" },
+        { "id": "e2", "type": "model_disclosure", "timestamp": "2025-06-08T11:02:14Z", "description": "Confidence threshold for MALIGNANT classification = 0.62; nodule spiculation feature weight not exposed to reviewer" },
+        { "id": "e3", "type": "review_failure", "timestamp": "2025-06-08T11:24:00Z", "description": "Reporting registrar concurs with AI label without independent feature analysis (automation bias documented)" },
+        { "id": "e4", "type": "report_finalised", "timestamp": "2025-06-08T12:10:00Z", "description": "Radiology report signed off; no follow-up imaging scheduled" },
+        { "id": "e5", "type": "delayed_diagnosis", "timestamp": "2026-05-12T00:00:00Z", "description": "Patient presents symptomatically; same nodule now 47mm, metastatic stage IIIa adenocarcinoma" },
+        { "id": "e6", "type": "adverse_event", "timestamp": "2026-05-13T00:00:00Z", "description": "MHRA Yellow Card serious adverse event filed; clinical negligence claim opened by patient" }
+      ]
+    }
+  },
+  {
+    "id": "av-fatal",
+    "label": "Autonomous Vehicle — Fatal Crash (US)",
+    "damages": "$12,500,000 USD",
+    "jurisdiction": "US",
+    "incident": {
+      "title": "Level-4 robotaxi misclassified stationary fire truck on I-280, rear-ended at 71 mph — one fatality, NHTSA SCI opened",
+      "description": "A SAE Level-4 robotaxi operated by FleetCo LLC under RobotaxiCo software v8.3 was travelling at 71 mph on I-280 northbound in clear daylight. A fire truck stationary in the right lane with hazard lights active was classified by the perception stack as 'overhead gantry / non-driveable structure' (confidence 0.77). The planner did not engage emergency braking until 0.8s before impact.",
+      "severity": "critical",
+      "jurisdiction": "US",
+      "financial_impact_cents": 1250000000,
+      "currency": "USD",
+      "category": "autonomous_vehicles",
+      "deterministic_only": true,
+      "agents": [
+        { "id": "vendor-1", "name": "RobotaxiCo (perception stack)", "type": "vendor", "vendor_name": "RobotaxiCo", "model_id": "perception-v8.3" },
+        { "id": "ai-1", "name": "RobotaxiCo Perception v8.3", "type": "ai_system", "model_id": "perception-v8.3" },
+        { "id": "deployer-1", "name": "FleetCo LLC", "type": "deployer", "operator_role": "deployer" },
+        { "id": "operator-1", "name": "Off-duty safety operator (passenger)", "type": "user", "operator_role": "user" }
+      ],
+      "events": [
+        { "id": "e1", "type": "environmental_condition", "timestamp": "2026-04-22T14:17:03Z", "description": "Clear daylight, dry asphalt, fire truck stationary with hazard lights and rear strobe pattern active" },
+        { "id": "e2", "type": "perception_failure", "timestamp": "2026-04-22T14:17:08Z", "description": "Perception classifies fire truck as 'overhead gantry / non-driveable' (label confidence 0.77)" },
+        { "id": "e3", "type": "planner_response", "timestamp": "2026-04-22T14:17:11Z", "description": "Planner maintains 71 mph cruise speed; no lane change considered" },
+        { "id": "e4", "type": "emergency_brake_late", "timestamp": "2026-04-22T14:17:14.1Z", "description": "Automated emergency braking engages 0.8s before impact (insufficient stopping distance)" },
+        { "id": "e5", "type": "collision", "timestamp": "2026-04-22T14:17:14.9Z", "description": "Robotaxi strikes rear of fire truck at 68 mph; one occupant fatality, two firefighters injured" },
+        { "id": "e6", "type": "regulator_action", "timestamp": "2026-04-23T00:00:00Z", "description": "NHTSA opens SCI-2026-117; Cal DMV deactivates FleetCo Level-4 permit pending review" }
+      ]
+    }
+  },
+  {
+    "id": "genai-copyright",
+    "label": "Generative AI — Copyright Infringement",
+    "damages": "$6,400,000 USD",
+    "jurisdiction": "US",
+    "incident": {
+      "title": "Image diffusion model regurgitated NYT Pulitzer Prize photograph near-verbatim on third-party prompt",
+      "description": "PixelForge Foundation v2.4 (a 12B-parameter image diffusion model) was trained on the LAION-FullArchive-2025 dataset, which included paywalled New York Times Company photographic archives obtained via residential-proxy scraping. A downstream API customer (StudioGen Inc.) used the model in production; a user prompt 'Pulitzer 2019 firefighters Notre-Dame' generated an image with >0.94 cosine similarity to the registered 2019 Pulitzer winner.",
+      "severity": "high",
+      "jurisdiction": "US",
+      "financial_impact_cents": 640000000,
+      "currency": "USD",
+      "category": "intellectual_property",
+      "deterministic_only": true,
+      "agents": [
+        { "id": "vendor-1", "name": "PixelForge AI", "type": "vendor", "vendor_name": "PixelForge AI", "model_id": "pixelforge-foundation-v2.4" },
+        { "id": "ai-1", "name": "PixelForge Foundation v2.4", "type": "ai_system", "model_id": "pixelforge-foundation-v2.4" },
+        { "id": "deployer-1", "name": "StudioGen Inc.", "type": "deployer", "operator_role": "deployer" },
+        { "id": "third-party-1", "name": "LAION dataset curator", "type": "third_party", "operator_role": "vendor" }
+      ],
+      "events": [
+        { "id": "e1", "type": "training_data_ingest", "timestamp": "2025-09-01T00:00:00Z", "description": "LAION-FullArchive-2025 ingested for pre-training; NYT paywalled archives included without licence" },
+        { "id": "e2", "type": "model_release", "timestamp": "2026-01-15T00:00:00Z", "description": "PixelForge Foundation v2.4 released as commercial API" },
+        { "id": "e3", "type": "user_prompt", "timestamp": "2026-04-03T16:22:00Z", "description": "End-user issues prompt 'Pulitzer 2019 firefighters Notre-Dame'" },
+        { "id": "e4", "type": "model_response", "timestamp": "2026-04-03T16:22:08Z", "description": "Generated image has cosine similarity 0.94 to registered 2019 Pulitzer photograph (perceptual hash distance < 4)" },
+        { "id": "e5", "type": "commercial_use", "timestamp": "2026-04-04T00:00:00Z", "description": "StudioGen Inc. publishes derivative image in client marketing campaign without further review" },
+        { "id": "e6", "type": "claim_filed", "timestamp": "2026-05-01T00:00:00Z", "description": "The New York Times Company files S.D.N.Y. complaint citing 17 U.S.C. §§ 501, 504(c); seeks injunction" }
+      ]
+    }
+  },
+  {
+    "id": "advice-fca",
+    "label": "AI Financial Advice — Robo-Adviser Mis-Selling",
+    "damages": "$8,900,000 AUD",
+    "jurisdiction": "AU",
+    "incident": {
+      "title": "Robo-adviser systematically mis-sold high-fee growth fund to 612 retail clients in breach of suitability + Consumer Duty",
+      "description": "NestEgg Wealth Ltd (FCA-authorised, dual-licensed by ASIC) deployed an in-house recommendation model (NestEgg Recommender v4) that took a 50-question risk profile and returned a portfolio allocation. Audit reconstruction showed the model assigned a fixed 38% weight to the in-house 'NestEgg Growth Plus' fund (TER 1.8%) regardless of whether the client's stated risk tolerance was Cautious, Balanced, or Growth.",
+      "severity": "high",
+      "jurisdiction": "AU",
+      "financial_impact_cents": 890000000,
+      "currency": "AUD",
+      "category": "financial_services",
+      "deterministic_only": true,
+      "agents": [
+        { "id": "vendor-1", "name": "NestEgg Wealth Ltd (in-house quant team)", "type": "vendor", "vendor_name": "NestEgg Wealth Ltd", "model_id": "nestegg-recommender-v4" },
+        { "id": "ai-1", "name": "NestEgg Recommender v4", "type": "ai_system", "model_id": "nestegg-recommender-v4" },
+        { "id": "deployer-1", "name": "NestEgg Wealth Ltd (operating business)", "type": "deployer", "operator_role": "deployer" },
+        { "id": "user-1", "name": "Retail clients (class, n=612)", "type": "user", "operator_role": "user" }
+      ],
+      "events": [
+        { "id": "e1", "type": "model_deployment", "timestamp": "2025-08-15T00:00:00Z", "description": "NestEgg Recommender v4 promoted to production without independent suitability audit" },
+        { "id": "e2", "type": "systematic_misrecommendation", "timestamp": "2025-08-20T00:00:00Z", "description": "Audit reconstruction shows fixed 38% weight to 'NestEgg Growth Plus' across all risk tolerances" },
+        { "id": "e3", "type": "client_investment", "timestamp": "2025-09-30T00:00:00Z", "description": "612 retail clients invest ~AUD $34M based on the recommendation" },
+        { "id": "e4", "type": "performance_drawdown", "timestamp": "2026-03-15T00:00:00Z", "description": "Six-month drawdown averages 22%; client complaints to FOS rise 9x baseline" },
+        { "id": "e5", "type": "regulator_action", "timestamp": "2026-04-29T00:00:00Z", "description": "FCA opens enforcement under PRIN 2A (Consumer Duty) and SMCR" },
+        { "id": "e6", "type": "parallel_investigation", "timestamp": "2026-05-06T00:00:00Z", "description": "ASIC opens parallel investigation under s912A(1)(a) Corporations Act for AU feeder fund clients" }
+      ]
+    }
+  }
+]
