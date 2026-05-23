@@ -67,7 +67,13 @@ import {
   type RemediationInput,
 } from "./remediation.js";
 import {
-  compareJurisdictions,
+  evaluateProspectiveResponse,
+  JURISDICTION_THRESHOLDS,
+  PROSPECTIVE_GATE_RULE_ID,
+  PROSPECTIVE_GATE_VERSION,
+  type ProposedAction,
+} from "./prospective-gate.js";
+import { compareJurisdictions,
   SUPPORTED_JURISDICTIONS,
   JURISDICTION_OVERLAY_VERSION,
   type CompareInput as JxCompareInput,
@@ -1133,6 +1139,71 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
     };
   }
 
+  // ── /api/v2/gate/evaluate (FK-METHOD-2026-006) ─────────────────────────
+  // Deterministic prospective-evaluation gate. Takes a ProposedAction and
+  // returns one of three verdicts: allow / require_revision / block. Same
+  // four-factor engine that issues post-hoc certificates, run prospectively
+  // on structured action metadata (not raw prose). Emits a certificate
+  // pre-image hash so the post-hoc certificate (if issued) chains canonically.
+  if (input.method === "POST" && input.path === "/api/v2/gate/evaluate") {
+    const body = (input.body ?? {}) as Record<string, unknown>;
+    const action = body.action as ProposedAction | undefined;
+    const overrides = body.overrides as {
+      allow_below?: number;
+      block_at_or_above?: number;
+      rationale?: string;
+    } | undefined;
+
+    if (!action || !action.action_id || !action.action_type || !action.acting_agent_id) {
+      return {
+        ...base,
+        error: "missing_required_fields",
+        required: ["action.action_id", "action.action_type", "action.acting_agent_id", "action.acting_agent_type", "action.severity_estimate"],
+        guidance:
+          "Submit { action: { action_id, action_type, acting_agent_id, acting_agent_type, severity_estimate, cascade_depth?, jurisdiction?, eu_flags?, context_flags? } }. Optionally overrides: { allow_below, block_at_or_above, rationale }. Override rationale is required so the audit trail is complete.",
+      };
+    }
+    if (overrides && (overrides.allow_below !== undefined || overrides.block_at_or_above !== undefined) && !overrides.rationale) {
+      return {
+        ...base,
+        error: "override_missing_rationale",
+        guidance: "Threshold overrides require a rationale field citing the governance basis (e.g. 'ISO/IEC 42001 SoA §3.2 approval'). This is enforced so the override is auditable.",
+      };
+    }
+
+    const decision = await evaluateProspectiveResponse(action, {
+      overrides: overrides?.rationale
+        ? {
+            allow_below: overrides.allow_below,
+            block_at_or_above: overrides.block_at_or_above,
+            rationale: overrides.rationale,
+          }
+        : undefined,
+    });
+
+    return {
+      ...base,
+      ...decision,
+    };
+  }
+
+  // ── /api/v2/gate/thresholds ─────────────────────────────────────────────
+  // Public, free read of the per-jurisdiction allow/block thresholds. Lets
+  // callers preview the band without having to hard-code or guess them.
+  if (input.method === "GET" && input.path === "/api/v2/gate/thresholds") {
+    return {
+      ...base,
+      ruleId: PROSPECTIVE_GATE_RULE_ID,
+      ruleVersion: PROSPECTIVE_GATE_VERSION,
+      thresholds: JURISDICTION_THRESHOLDS,
+      notes: [
+        "EU is strictest (AI Act Art. 9 risk-management baseline).",
+        "AU is strict for regulated sectors (ACL Pt 3-2 + APRA CPS 230).",
+        "Production callers can loosen via overrides on /api/v2/gate/evaluate; a rationale is REQUIRED so audit trail is complete.",
+      ],
+    };
+  }
+
   // ── /api/v2/remediation/catalog ─────────────────────────────────────────
   // Public, free read of the remediation catalog. Lets callers (and the
   // demo UI) discover the available remediation IDs without having to
@@ -1342,6 +1413,8 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
       { method: "POST", path: "/api/v2/remediation/simulate", description: "Simulate counterfactual apportionment under one or more remediations" },
       { method: "GET", path: "/api/v2/jurisdiction/catalog", description: "List supported jurisdictions and which overlays are research stubs in v1" },
       { method: "POST", path: "/api/v2/jurisdiction/overlay", description: "Compare apportionment side-by-side across AU, EU, US, UK, CA (FK-METHOD-2026-004)" },
+      { method: "POST", path: "/api/v2/gate/evaluate", description: "Deterministic prospective-evaluation gate (FK-METHOD-2026-006): allow / require_revision / block on a ProposedAction BEFORE response delivery" },
+      { method: "GET", path: "/api/v2/gate/thresholds", description: "Read per-jurisdiction prospective-gate thresholds" },
       { method: "GET", path: "/api/v2/anchor/status", description: "Get anchor log status" },
       { method: "GET", path: "/api/v2/issuers", description: "Query issuer registry" },
       { method: "GET", path: "/api/v1/regulatory-lookup", description: "Regulatory framework lookup" },

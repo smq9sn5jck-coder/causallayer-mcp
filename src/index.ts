@@ -1064,7 +1064,137 @@ export class CausalLayerMCP extends McpAgent<Env, unknown, SessionProps> {
       }
     );
 
-    // ── Tool 3: get_anchor_status (free) ───────────────────────────────────
+    // ── Tool 2e: evaluate_prospective_response ────────────────────────────
+    // FK-METHOD-2026-006: deterministic prospective-evaluation gate. Run the
+    // same four-factor engine BEFORE response delivery to get an
+    // allow / require_revision / block verdict on a structured ProposedAction.
+    // Emits a certificate pre-image so post-hoc certificates chain canonically.
+    this.server.registerTool(
+      "evaluate_prospective_response",
+      {
+        description:
+          "Deterministic prospective-evaluation gate (FK-METHOD-2026-006). " +
+          "Pass a ProposedAction BEFORE the agent delivers a response; receive " +
+          "one of three verdicts: 'allow', 'require_revision' (with specific " +
+          "factor-keyed directives), or 'block'. Uses the same four-factor " +
+          "engine that issues post-hoc certificates, so a single incident " +
+          "chains: prospective_pre_image -> response -> certificate -> anchor. " +
+          "This is a policy gate on structured action metadata, NOT a content " +
+          "safety classifier on raw prose. Thresholds are per-jurisdiction " +
+          "(EU strictest, US most permissive); read via GET " +
+          "/api/v2/gate/thresholds. Overrides are allowed but REQUIRE a " +
+          "governance rationale so the audit trail is complete. " +
+          `Cost: ${priceFor(env, "verify_certificate")} credit. Pure deterministic.`,
+        inputSchema: {
+          action: z
+            .object({
+              action_id: z.string().describe("Stable id for this action; echoed back."),
+              action_type: z
+                .enum([
+                  "llm_response",
+                  "tool_call",
+                  "code_execution",
+                  "external_api_call",
+                  "human_handoff",
+                  "data_modification",
+                  "financial_transaction",
+                  "medical_advice",
+                  "legal_advice",
+                  "financial_advice",
+                  "content_moderation",
+                  "autonomous_decision",
+                  "other",
+                ])
+                .describe("The action category. Carries inherent regulatory weight."),
+              acting_agent_id: z.string().describe("Free-form id of the agent issuing the action."),
+              acting_agent_type: z
+                .enum(["ai_system", "vendor", "deployer", "operator", "human_user", "third_party"])
+                .describe("Liability-bias category of the acting agent."),
+              severity_estimate: z
+                .enum(["low", "medium", "high", "critical"])
+                .describe("The estimated severity if the action goes wrong."),
+              jurisdiction: z
+                .enum(["AU", "EU", "US", "UK", "CA"])
+                .optional()
+                .describe("Jurisdiction overlay; defaults to AU."),
+              cascade_depth: z
+                .number()
+                .int()
+                .min(0)
+                .optional()
+                .describe(
+                  "How many upstream agents this action is downstream of. 0 = root; 3 = LLM->agent->tool->this. Applies cascade attenuation."
+                ),
+              eu_flags: z
+                .object({
+                  high_risk_ai: z.boolean().optional(),
+                  pld_compensable_damage: z.boolean().optional(),
+                  human_oversight_unassigned_or_unqualified: z.boolean().optional(),
+                })
+                .optional()
+                .describe("Optional EU AI Act flags; only used when jurisdiction === 'EU'."),
+              context_flags: z
+                .object({
+                  affects_vulnerable_population: z.boolean().optional(),
+                  regulated_domain: z.boolean().optional(),
+                  irreversible_if_executed: z.boolean().optional(),
+                  human_in_the_loop_present: z.boolean().optional(),
+                })
+                .optional()
+                .describe("Context flags that inform the regulatoryAlignment and controllability sub-scores."),
+              upstream_incident_id: z
+                .string()
+                .optional()
+                .describe("Optional chain to an existing incident trace."),
+            })
+            .describe("The structured ProposedAction to evaluate."),
+          overrides: z
+            .object({
+              allow_below: z.number().min(0).max(1).optional(),
+              block_at_or_above: z.number().min(0).max(1).optional(),
+              rationale: z
+                .string()
+                .describe(
+                  "REQUIRED when overrides are provided. Cite the governance basis (e.g. 'ISO/IEC 42001 SoA \u00a73.2 approval')."
+                ),
+            })
+            .optional()
+            .describe("Optional per-call threshold override. Rationale REQUIRED for audit."),
+        },
+      },
+      async ({ action, overrides }) => {
+        return withBilling(env, tenantId, "verify_certificate", meta, async () => {
+          const result = await callApi<Record<string, unknown>>(
+            env,
+            "POST",
+            "/api/v2/gate/evaluate",
+            { action, overrides }
+          );
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    env: env.CAUSALLAYER_ENV,
+                    tenant_id: tenantId,
+                    ...result,
+                    billing: {
+                      tool: "evaluate_prospective_response",
+                      credits_charged: priceFor(env, "verify_certificate"),
+                    },
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }) as Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }>;
+      }
+    );
+
+    // ── Tool 3: get_anchor_status (free) ───────────────────────────────
     this.server.registerTool(
       "get_anchor_status",
       {
