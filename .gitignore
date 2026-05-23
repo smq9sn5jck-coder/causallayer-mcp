@@ -16,3 +16,4 @@ coverage/
 .indexnow_key
 *.indexnow.key
 .indexnow/
+.serena/

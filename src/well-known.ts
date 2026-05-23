@@ -195,12 +195,58 @@ function staticJson(payload: unknown): Response {
  *
  * Pure / deterministic / no env access — easy to unit-test.
  */
+// ─── robots.txt ──────────────────────────────────────────────────────────
+// Served at /robots.txt so AI crawlers (ClaudeBot, GPTBot, PerplexityBot,
+// CCBot, Bytespider) get an authoritative signal that this Worker is
+// intentionally public AI-governance infrastructure. Returning 404 here
+// causes some discovery pipelines to skip the host entirely; an explicit
+// allow-list of canonical crawlers + sitemap pointer keeps us indexable
+// while still blocking unidentified scrapers from anything under /admin
+// (which is already 404-hardened by the main router).
+const ROBOTS_TXT = [
+  "# FaultKey · CausalLayer MCP",
+  "# Public AI-liability attribution engine. Indexing welcome.",
+  "",
+  "User-agent: *",
+  "Allow: /",
+  "Disallow: /admin/",
+  "Disallow: /mcp",
+  "",
+  "User-agent: ClaudeBot",
+  "Allow: /",
+  "",
+  "User-agent: GPTBot",
+  "Allow: /",
+  "",
+  "User-agent: PerplexityBot",
+  "Allow: /",
+  "",
+  "User-agent: CCBot",
+  "Allow: /",
+  "",
+  "Sitemap: https://faultkey.com/sitemap.xml",
+  "",
+].join("\n");
+
+function staticText(payload: string): Response {
+  return new Response(payload, {
+    status: 200,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "public, max-age=3600, s-maxage=3600",
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
+
 export function handleWellKnown(pathname: string): Response | null {
   switch (pathname) {
     case "/.well-known/mcp.json":
       return staticJson(WELL_KNOWN_MCP);
     case "/.well-known/glama.json":
       return staticJson(WELL_KNOWN_GLAMA);
+    case "/robots.txt":
+      return staticText(ROBOTS_TXT);
     default:
       return null;
   }
