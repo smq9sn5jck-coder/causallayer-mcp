@@ -57,6 +57,7 @@ function hashInt(hash: string, offset: number, min: number, max: number): number
 }
 
 import { applyEuRuleSet, euGateEngages, RULE_SET_VERSION as EU_RULE_SET_VERSION, type EuActor, type EuRuleFlags } from "./eu-rules.js";
+import { applyCascadeAttenuation, type CascadeAttenuationOutput } from "./cascade.js";
 
 // ─── Input-sensitive scoring logic ─────────────────────────────────────────
 const SEVERITY_WEIGHTS: Record<string, number> = {
@@ -192,7 +193,7 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
 
     const primaryAgent = agents[0] ?? { id: "agent_unknown", type: "ai_system" };
     const primaryType = primaryAgent.type ?? "ai_system";
-    const primaryScore = computePrimaryScore(
+    let primaryScore = computePrimaryScore(
       hash,
       severity,
       primaryType,
@@ -216,6 +217,39 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
           share: +((weights[i]! / totalWeight) * remainingShare).toFixed(3),
         });
       });
+    }
+
+    // ── Apply Cascade Attenuation Rule (FK-METHOD-2026-002) ───────────────
+    // When agents act as links in a multi-agent chain, sub-linearly reduce
+    // each agent's individual share. See docs/cascade-rule.md for the math
+    // and case-law mapping.
+    let cascadeAttenuation: CascadeAttenuationOutput | null = null;
+    if (agents.length >= 2 && events.length >= 2) {
+      const beforeShares: Record<string, number> = {};
+      beforeShares[primaryAgent.id] = primaryScore;
+      for (const s of secondaryShares) beforeShares[s.party] = s.share;
+
+      cascadeAttenuation = applyCascadeAttenuation(
+        beforeShares,
+        events.map((e) => ({
+          id: e.id,
+          type: e.type ?? "event",
+          agent: e.actor_id,
+          trace_id: (e as { trace_id?: string }).trace_id,
+          span_id: (e as { span_id?: string }).span_id,
+          parent_span_id: (e as { parent_span_id?: string }).parent_span_id,
+          caused_by: (e as { caused_by?: string }).caused_by,
+        })),
+        agents.map((a) => ({ id: a.id, type: a.type })),
+      );
+
+      if (cascadeAttenuation.applied) {
+        // Replace primaryScore + secondaryShares with attenuated values
+        primaryScore = +(cascadeAttenuation.attenuated_shares[primaryAgent.id] ?? primaryScore).toFixed(3);
+        for (const s of secondaryShares) {
+          s.share = +(cascadeAttenuation.attenuated_shares[s.party] ?? s.share).toFixed(3);
+        }
+      }
     }
 
     // ── Apply EU rule-set if jurisdiction + trigger gates engage ───────────
@@ -767,6 +801,7 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
       },
       ruleSetVersion,
       euRuleOverlay: euOverlay,
+      cascadeAttenuation,
       crossCaseCalibration: {
         adjustmentAppliedPP: hashFloat(hash, 36, -0.08, 0.08),
         categoryProfile: category,
