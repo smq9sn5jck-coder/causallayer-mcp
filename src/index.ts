@@ -56,6 +56,15 @@ import {
   type RequestMeta,
 } from "./demo.js";
 import { standaloneResponse } from "./standalone.js";
+import { convertOtlpToIncident, type OtlpJson } from "./otel-ingest.js";
+import {
+  runWeeklyDeterminism,
+  persistManifest,
+  readManifests,
+  CANONICAL_SCENARIOS,
+  CANONICAL_SUITE_VERSION,
+  type WeeklyManifest,
+} from "./weekly-determinism.js";
 
 // ─── Bindings ──────────────────────────────────────────────────────────────
 
@@ -77,6 +86,11 @@ export interface Env extends BillingEnv {
 
   // McpAgent Durable Object binding
   MCP_OBJECT: DurableObjectNamespace;
+
+  // FK-METHOD-2026-005 weekly determinism cron
+  WEEKLY_PROOFS?: KVNamespace;
+  ANCHOR_PRIVATE_KEY?: string; // base64 raw 32-byte Ed25519 seed (production only)
+  ADMIN_TOKEN?: string; // gates POST /api/v2/proofs/run-now
 }
 
 function parseUsd(v: string | undefined, fallback: number): number {
@@ -463,6 +477,25 @@ export class CausalLayerMCP extends McpAgent<Env, unknown, SessionProps> {
                 description: z
                   .string()
                   .min(1, "G3: every event must have a non-empty description"),
+                // ── Optional W3C Trace Context evidence ─────────────────────
+                // When the caller has OpenTelemetry / Jaeger / Datadog APM
+                // traces for this event, including the trace + span ids lets
+                // FaultKey emit a `causalGraph.edges[].evidence` pointer and a
+                // top-level `trace_context` block. The certificate then cites
+                // a specific span the way a court order cites a specific email
+                // ID. Backwards-compatible: events without these fields
+                // produce identical certificates to before.
+                trace_id: z
+                  .string()
+                  .regex(/^[0-9a-f]{32}$/i, "W3C trace_id must be 32 lowercase hex chars")
+                  .optional(),
+                span_id: z
+                  .string()
+                  .regex(/^[0-9a-f]{16}$/i, "W3C span_id must be 16 lowercase hex chars")
+                  .optional(),
+                trace_source: z
+                  .enum(["opentelemetry", "jaeger", "zipkin", "datadog", "newrelic", "other"])
+                  .optional(),
               })
             )
             .min(1, "G3: at least one event is required"),
@@ -606,7 +639,562 @@ export class CausalLayerMCP extends McpAgent<Env, unknown, SessionProps> {
       }
     );
 
-    // ── Tool 3: get_anchor_status (free) ───────────────────────────────────
+    // ── Tool 2b: verify_certificate_recompute ───────────────────
+    // Third-party-replicable verification: re-runs the engine on the supplied
+    // canonical input and compares byte-for-byte against the claimed cert.
+    // Requires no trust in the issuer or signing key.
+    this.server.registerTool(
+      "verify_certificate_recompute",
+      {
+        description:
+          "Independently re-derive a CausalCertificate from its canonical input " +
+          "and compare byte-for-byte against the claimed certificate. This is the " +
+          "strongest verification path: it requires no trust in the issuer or signing key. " +
+          `Cost: ${priceFor(env, "verify_certificate")} credit (same price as verify_certificate). ` +
+          "Returns PASS only if every checked field (certificateId, request_hash, merkleRoot, " +
+          "verdict, causalGraph, fourFactorScoring, deviationTaxonomy, euRuleOverlay, " +
+          "cascadeAttenuation, damages, underwriting) matches identically.",
+        inputSchema: {
+          certificate: z
+            .record(z.unknown())
+            .describe("The CausalCertificate object claimed by the issuer."),
+          canonicalInput: z
+            .record(z.unknown())
+            .describe(
+              "The original incident body that produced the certificate — the same JSON " +
+              "originally posted to submit_incident or submit_otel_trace."
+            ),
+        },
+      },
+      async ({ certificate, canonicalInput }) => {
+        return withBilling(env, tenantId, "verify_certificate", meta, async () => {
+          const result = await callApi<Record<string, unknown>>(
+            env,
+            "POST",
+            "/api/v2/verify/recompute",
+            { certificate, canonicalInput }
+          );
+
+          const verification = (result.verification as Record<string, unknown> | undefined) ?? {};
+          const verified = verification.verified === true;
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    env: env.CAUSALLAYER_ENV,
+                    tenant_id: tenantId,
+                    ...result,
+                    policy_outcome: verified ? "PASS" : "FAIL",
+                    billing: {
+                      tool: "verify_certificate_recompute",
+                      credits_charged: priceFor(env, "verify_certificate"),
+                    },
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }) as Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }>;
+      }
+    );
+
+    // ── Tool 1b: submit_otel_trace ──────────────────────────
+    // Same engine as submit_incident, but accepts an OTLP JSON trace export
+    // directly. Each span becomes a FaultKey event; service.name groups
+    // spans into agents; W3C trace_id and span_id propagate as evidence
+    // pointers on the causal-graph edges. PII scan, deterministic_only, and
+    // billing reuse the submit_incident path so policy stays consistent.
+    this.server.registerTool(
+      "submit_otel_trace",
+      {
+        description:
+          "Convert an OpenTelemetry OTLP JSON trace into a FaultKey incident and " +
+          "return the same deterministic CausalCertificate as submit_incident. " +
+          "Each span becomes an event; service.name groups spans into agents; " +
+          "W3C trace_id and span_id propagate as evidence pointers on the causal " +
+          "graph edges. " +
+          `Cost: ${priceFor(env, "submit_incident")} credits (same as submit_incident). ` +
+          "Three guardrails apply: PII scan, deterministic-only acknowledgement, " +
+          "and minimum evidence (auto-satisfied when the trace has at least 1 span).",
+        inputSchema: {
+          title: z.string().min(3),
+          otlp: z
+            .record(z.unknown())
+            .describe(
+              "OTLP JSON payload with resourceSpans[]. See " +
+                "https://opentelemetry.io/docs/specs/otlp/#json-protobuf-encoding"
+            ),
+          category: z.string().optional(),
+          jurisdiction: z.string().optional(),
+          financial_impact_cents: z.number().int().nonnegative().nullable().optional(),
+          currency: z.string().length(3).optional(),
+          deterministic_only: z
+            .literal(true)
+            .describe("G2: Must be true. Acknowledges CausalLayer is deterministic."),
+          pii_acknowledged: z
+            .boolean()
+            .default(false)
+            .describe(
+              "G1: Set to true ONLY if PII handling is permitted by your data agreement. " +
+                "OTLP traces frequently leak user/session ids in attributes."
+            ),
+        },
+      },
+      async (input) => {
+        // Convert OTLP → FaultKey incident (pure, deterministic)
+        let conversion;
+        try {
+          conversion = convertOtlpToIncident(input.otlp as OtlpJson, {
+            title: input.title,
+            category: input.category,
+            jurisdiction: input.jurisdiction,
+            financial_impact_cents: input.financial_impact_cents,
+            currency: input.currency,
+            pii_acknowledged: input.pii_acknowledged ?? false,
+          });
+        } catch (err) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: `OTLP_INGEST_ERROR: ${err instanceof Error ? err.message : String(err)}`,
+              },
+            ],
+          };
+        }
+
+        // G1 — PII scan over reconstructed event descriptions
+        const blob = JSON.stringify({
+          title: conversion.incident.title,
+          events: conversion.incident.events.map((e: { description: string }) => ({ description: e.description })),
+        });
+        const piiHits = scanForPii(blob);
+        if (piiHits.length > 0 && !input.pii_acknowledged) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text:
+                  `GUARDRAIL G1 (PII_DETECTED): patterns=${piiHits.join(",")}. ` +
+                  `OTLP traces frequently leak user/session ids; redact attributes or set pii_acknowledged=true.`,
+              },
+            ],
+          };
+        }
+
+        return withBilling(env, tenantId, "submit_incident", meta, async () => {
+          const upstream = await callApi(env, "POST", "/api/v1/incidents/analyze", {
+            title: conversion.incident.title,
+            description: conversion.incident.description,
+            category: conversion.incident.category,
+            severity: conversion.incident.severity,
+            jurisdiction: conversion.incident.jurisdiction,
+            financial_impact_cents: conversion.incident.financial_impact_cents,
+            currency: conversion.incident.currency,
+            agents: conversion.incident.agents,
+            events: conversion.incident.events,
+          });
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    env: env.CAUSALLAYER_ENV,
+                    tenant_id: tenantId,
+                    guardrails: {
+                      pii_scan:
+                        piiHits.length === 0 ? "clean" : `acknowledged: ${piiHits.join(",")}`,
+                      deterministic_only: true,
+                      evidence_required: true,
+                    },
+                    billing: {
+                      tool: "submit_otel_trace",
+                      credits_charged: priceFor(env, "submit_incident"),
+                    },
+                    otel_ingest: conversion.stats,
+                    otel_ingest_warnings: conversion.warnings,
+                    result: upstream,
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }) as Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }>;
+      }
+    );
+
+    // ── Tool 2c: simulate_remediation ──────────────────────────────────────
+    // Closed-form counterfactual remediation simulator (FK-METHOD-2026-003).
+    // Takes a verdict + four-factor scoring + agents + a list of remediation
+    // IDs from the catalog and returns the counterfactual apportionment
+    // under each remediation in isolation, plus the composite where they
+    // all stack. Pure deterministic. Citable: every remediation in the
+    // catalog cites a specific statute / standard / case.
+    this.server.registerTool(
+      "simulate_remediation",
+      {
+        description:
+          "Counterfactual remediation simulator. Given a certificate's verdict + " +
+          "fourFactorScoring + agents and a list of remediation IDs from the " +
+          "FK-METHOD-2026-003 catalog, return the apportioned shares each " +
+          "remediation would have produced (in isolation) and the composite " +
+          "shares if they all stack. Every remediation cites a specific statute " +
+          "or standard. GET /api/v2/remediation/catalog for the list of IDs. " +
+          `Cost: ${priceFor(env, "verify_certificate")} credit (same price as verify_certificate). ` +
+          "Pure deterministic; same inputs produce a byte-identical result.",
+        inputSchema: {
+          verdict: z
+            .object({
+              primaryParty: z.string(),
+              primaryShare: z.number().min(0).max(1),
+              secondary: z.array(
+                z.object({ party: z.string(), share: z.number().min(0).max(1) })
+              ),
+            })
+            .describe(
+              "The verdict block from the CausalCertificate."
+            ),
+          fourFactorScoring: z
+            .object({
+              primaryAgent: z.string(),
+              causalProximity: z.number().min(0).max(1),
+              behaviouralDeviation: z.number().min(0).max(1),
+              controllability: z.number().min(0).max(1),
+              regulatoryAlignment: z.number().min(0).max(1),
+              weights: z.object({
+                causalProximity: z.number(),
+                behaviouralDeviation: z.number(),
+                controllability: z.number(),
+                regulatoryAlignment: z.number(),
+              }),
+            })
+            .describe(
+              "The fourFactorScoring block from the CausalCertificate."
+            ),
+          agents: z
+            .array(z.object({ id: z.string(), type: z.string().optional() }))
+            .describe(
+              "Agent registry (id + type) so the simulator can map remediation targetType to specific party ids."
+            ),
+          remediations: z
+            .array(
+              z.object({
+                id: z.string(),
+                appliedToParty: z.string().optional(),
+              })
+            )
+            .min(1)
+            .describe(
+              "List of remediation IDs from the catalog (e.g. vendor_adversarial_eval_suite, deployer_human_in_loop). Each may optionally pin appliedToParty to a specific agent id."
+            ),
+        },
+      },
+      async ({ verdict, fourFactorScoring, agents, remediations }) => {
+        return withBilling(env, tenantId, "verify_certificate", meta, async () => {
+          const result = await callApi<Record<string, unknown>>(
+            env,
+            "POST",
+            "/api/v2/remediation/simulate",
+            { verdict, fourFactorScoring, agents, remediations }
+          );
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    env: env.CAUSALLAYER_ENV,
+                    tenant_id: tenantId,
+                    ...result,
+                    billing: {
+                      tool: "simulate_remediation",
+                      credits_charged: priceFor(env, "verify_certificate"),
+                    },
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }) as Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }>;
+      }
+    );
+
+    // ── Tool 2d: query_jurisdiction_overlay ──────────────────────────────
+    // FK-METHOD-2026-004: side-by-side comparison of the same canonical
+    // apportionment under AU, EU, US, UK, and CA legal regimes. EU and AU
+    // have full overlays grounded in real statute; US/UK/CA are research
+    // stubs in v1 (the response marks `is_stub: true` and the warning
+    // `stub_pending_research:<jx>` is emitted). Pure deterministic.
+    this.server.registerTool(
+      "query_jurisdiction_overlay",
+      {
+        description:
+          "Multi-jurisdiction overlay (FK-METHOD-2026-004). Given a canonical " +
+          "attributable apportionment (party-id -> share), the union of all " +
+          "jurisdiction role tags on each actor, and the union of " +
+          "jurisdiction-specific flags, return side-by-side post-overlay " +
+          "shares for AU, EU, US, UK, CA (or a chosen subset) with the " +
+          "specific rules that fired in each, citation URLs, and a parties × " +
+          "jurisdictions matrix. v1 ships full implementations for AU and EU; " +
+          "US/UK/CA are research stubs marked `is_stub: true`. Use GET " +
+          "/api/v2/jurisdiction/catalog to discover support and stub status. " +
+          `Cost: ${priceFor(env, "verify_certificate")} credit. Pure deterministic.`,
+        inputSchema: {
+          attributable: z
+            .record(z.string(), z.number().min(0).max(1))
+            .describe(
+              "Canonical pre-overlay apportionment as { party_id: share }. Sum should approximate 1.0; the function renormalises within tolerance."
+            ),
+          actors: z
+            .array(
+              z.object({
+                id: z.string(),
+                type: z.enum([
+                  "ai_system",
+                  "vendor",
+                  "deployer",
+                  "human_operator",
+                  "user",
+                  "third_party",
+                ]),
+                eu_chain_member: z
+                  .array(
+                    z.enum([
+                      "manufacturer",
+                      "authorised_representative",
+                      "importer",
+                      "fulfilment_service_provider",
+                      "distributor",
+                      "online_platform_self_supplier",
+                      "substantial_modifier",
+                    ])
+                  )
+                  .optional(),
+                eu_resident: z.boolean().optional(),
+                apra_regulated: z.boolean().optional(),
+                acl_supplier: z.boolean().optional(),
+                unrecoverable: z.boolean().optional(),
+              })
+            )
+            .describe(
+              "All actors with the union of jurisdiction-specific role tags. EU and AU tags coexist on the same actor record."
+            ),
+          flags: z
+            .object({
+              high_risk_ai: z.boolean().optional(),
+              pld_compensable_damage: z.boolean().optional(),
+              deployer_used_contrary_to_instructions: z.boolean().optional(),
+              human_oversight_unassigned_or_unqualified: z.boolean().optional(),
+              human_oversight_nominally_assigned_not_present: z.boolean().optional(),
+              deployer_input_data_unrepresentative: z.boolean().optional(),
+              deployer_ignored_risk_signal: z.boolean().optional(),
+              deployer_failed_serious_incident_notification: z.boolean().optional(),
+              deployer_destroyed_logs: z.boolean().optional(),
+              deployer_employer_no_worker_notice: z.boolean().optional(),
+              deployer_public_authority_unregistered: z.boolean().optional(),
+              provider_failed_to_supply_instructions: z.boolean().optional(),
+              provider_breach_was_unforeseeable: z.boolean().optional(),
+              ai_is_opaque_black_box: z.boolean().optional(),
+              defendant_failed_disclosure_order: z.boolean().optional(),
+              substantial_modification_present: z.boolean().optional(),
+              substantial_modification_severity: z.number().min(0).max(1).optional(),
+              acl_major_failure: z.boolean().optional(),
+              is_apra_regulated_service: z.boolean().optional(),
+              cps230_thirdparty_breach: z.boolean().optional(),
+              cps230_operational_breach: z.boolean().optional(),
+              vaiss_adherent: z.boolean().optional(),
+              vendor_no_docs: z.boolean().optional(),
+            })
+            .describe(
+              "Union of jurisdiction-specific flags. AI Act / PLD flags drive the EU overlay; ACL / CPS 230 / VAISS flags drive the AU overlay."
+            ),
+          jurisdictions: z
+            .array(z.enum(["AU", "EU", "US", "UK", "CA"]))
+            .optional()
+            .describe("Optional subset to compute. Defaults to all five."),
+          primaryJurisdiction: z
+            .string()
+            .optional()
+            .describe(
+              "Engine-level jurisdiction string (e.g. 'EU', 'DE', 'AU'). Used by the EU gate to decide engagement."
+            ),
+        },
+      },
+      async ({ attributable, actors, flags, jurisdictions, primaryJurisdiction }) => {
+        return withBilling(env, tenantId, "verify_certificate", meta, async () => {
+          const result = await callApi<Record<string, unknown>>(
+            env,
+            "POST",
+            "/api/v2/jurisdiction/overlay",
+            { attributable, actors, flags, jurisdictions, primaryJurisdiction }
+          );
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    env: env.CAUSALLAYER_ENV,
+                    tenant_id: tenantId,
+                    ...result,
+                    billing: {
+                      tool: "query_jurisdiction_overlay",
+                      credits_charged: priceFor(env, "verify_certificate"),
+                    },
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }) as Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }>;
+      }
+    );
+
+    // ── Tool 2e: evaluate_prospective_response ────────────────────────────
+    // FK-METHOD-2026-006: deterministic prospective-evaluation gate. Run the
+    // same four-factor engine BEFORE response delivery to get an
+    // allow / require_revision / block verdict on a structured ProposedAction.
+    // Emits a certificate pre-image so post-hoc certificates chain canonically.
+    this.server.registerTool(
+      "evaluate_prospective_response",
+      {
+        description:
+          "Deterministic prospective-evaluation gate (FK-METHOD-2026-006). " +
+          "Pass a ProposedAction BEFORE the agent delivers a response; receive " +
+          "one of three verdicts: 'allow', 'require_revision' (with specific " +
+          "factor-keyed directives), or 'block'. Uses the same four-factor " +
+          "engine that issues post-hoc certificates, so a single incident " +
+          "chains: prospective_pre_image -> response -> certificate -> anchor. " +
+          "This is a policy gate on structured action metadata, NOT a content " +
+          "safety classifier on raw prose. Thresholds are per-jurisdiction " +
+          "(EU strictest, US most permissive); read via GET " +
+          "/api/v2/gate/thresholds. Overrides are allowed but REQUIRE a " +
+          "governance rationale so the audit trail is complete. " +
+          `Cost: ${priceFor(env, "verify_certificate")} credit. Pure deterministic.`,
+        inputSchema: {
+          action: z
+            .object({
+              action_id: z.string().describe("Stable id for this action; echoed back."),
+              action_type: z
+                .enum([
+                  "llm_response",
+                  "tool_call",
+                  "code_execution",
+                  "external_api_call",
+                  "human_handoff",
+                  "data_modification",
+                  "financial_transaction",
+                  "medical_advice",
+                  "legal_advice",
+                  "financial_advice",
+                  "content_moderation",
+                  "autonomous_decision",
+                  "other",
+                ])
+                .describe("The action category. Carries inherent regulatory weight."),
+              acting_agent_id: z.string().describe("Free-form id of the agent issuing the action."),
+              acting_agent_type: z
+                .enum(["ai_system", "vendor", "deployer", "operator", "human_user", "third_party"])
+                .describe("Liability-bias category of the acting agent."),
+              severity_estimate: z
+                .enum(["low", "medium", "high", "critical"])
+                .describe("The estimated severity if the action goes wrong."),
+              jurisdiction: z
+                .enum(["AU", "EU", "US", "UK", "CA"])
+                .optional()
+                .describe("Jurisdiction overlay; defaults to AU."),
+              cascade_depth: z
+                .number()
+                .int()
+                .min(0)
+                .optional()
+                .describe(
+                  "How many upstream agents this action is downstream of. 0 = root; 3 = LLM->agent->tool->this. Applies cascade attenuation."
+                ),
+              eu_flags: z
+                .object({
+                  high_risk_ai: z.boolean().optional(),
+                  pld_compensable_damage: z.boolean().optional(),
+                  human_oversight_unassigned_or_unqualified: z.boolean().optional(),
+                })
+                .optional()
+                .describe("Optional EU AI Act flags; only used when jurisdiction === 'EU'."),
+              context_flags: z
+                .object({
+                  affects_vulnerable_population: z.boolean().optional(),
+                  regulated_domain: z.boolean().optional(),
+                  irreversible_if_executed: z.boolean().optional(),
+                  human_in_the_loop_present: z.boolean().optional(),
+                })
+                .optional()
+                .describe("Context flags that inform the regulatoryAlignment and controllability sub-scores."),
+              upstream_incident_id: z
+                .string()
+                .optional()
+                .describe("Optional chain to an existing incident trace."),
+            })
+            .describe("The structured ProposedAction to evaluate."),
+          overrides: z
+            .object({
+              allow_below: z.number().min(0).max(1).optional(),
+              block_at_or_above: z.number().min(0).max(1).optional(),
+              rationale: z
+                .string()
+                .describe(
+                  "REQUIRED when overrides are provided. Cite the governance basis (e.g. 'ISO/IEC 42001 SoA \u00a73.2 approval')."
+                ),
+            })
+            .optional()
+            .describe("Optional per-call threshold override. Rationale REQUIRED for audit."),
+        },
+      },
+      async ({ action, overrides }) => {
+        return withBilling(env, tenantId, "verify_certificate", meta, async () => {
+          const result = await callApi<Record<string, unknown>>(
+            env,
+            "POST",
+            "/api/v2/gate/evaluate",
+            { action, overrides }
+          );
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    env: env.CAUSALLAYER_ENV,
+                    tenant_id: tenantId,
+                    ...result,
+                    billing: {
+                      tool: "evaluate_prospective_response",
+                      credits_charged: priceFor(env, "verify_certificate"),
+                    },
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }) as Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }>;
+      }
+    );
+
+    // ── Tool 3: get_anchor_status (free) ───────────────────────────────
     this.server.registerTool(
       "get_anchor_status",
       {
@@ -830,6 +1418,50 @@ export default {
       return res;
     }
 
+    // ── /api/v2/proofs/weekly (FK-METHOD-2026-005) ────────────────────────
+    // Public read of the rolling weekly determinism manifest log.
+    // ?limit=N (1..52) controls how many weeks to return.
+    // ?week=YYYY-Www returns a single week if present.
+    if (url.pathname === "/api/v2/proofs/weekly" && request.method === "GET") {
+      const res = await handleWeeklyProofsRead(env, url);
+      await logEvent("api_request", request, env, ctx, {
+        request_path: url.pathname,
+        method: request.method,
+        response_status: res.status,
+        duration_ms: Date.now() - t0,
+      });
+      return res;
+    }
+
+    // ── /api/v2/proofs/run-now (FK-METHOD-2026-005) ───────────────────────
+    // ADMIN_TOKEN-gated. Triggers a manifest run outside the cron schedule.
+    // Returns 404 (not 401) on unauth to avoid signaling the surface.
+    if (url.pathname === "/api/v2/proofs/run-now" && request.method === "POST") {
+      const provided = request.headers.get("x-admin-token") ?? "";
+      if (!env.ADMIN_TOKEN || provided !== env.ADMIN_TOKEN) {
+        await logEvent("api_error", request, env, ctx, {
+          request_path: url.pathname,
+          method: request.method,
+          response_status: 404,
+          duration_ms: Date.now() - t0,
+          error_message: "proofs_runnow_unauth_404",
+        });
+        return json({ error: "not_found", path: url.pathname }, 404);
+      }
+      if (!env.WEEKLY_PROOFS) {
+        return json({ error: "weekly_proofs_kv_not_bound" }, 503);
+      }
+      const manifest = await runWeeklyDeterminism({
+        env: { CAUSALLAYER_ENV: env.CAUSALLAYER_ENV, STANDALONE_DEMO: env.STANDALONE_DEMO },
+        scoreOnce: (sc) => scoreOneScenario(env, sc),
+        sign: env.ANCHOR_PRIVATE_KEY
+          ? (sha) => signEd25519(env.ANCHOR_PRIVATE_KEY!, sha)
+          : undefined,
+      });
+      await persistManifest(env.WEEKLY_PROOFS, manifest);
+      return json({ ok: true, manifest });
+    }
+
         // /admin/stats — ADMIN_TOKEN-gated; per-tenant + Cloudflare Workers Analytics
     //
     // Hardening note: when no ADMIN_TOKEN is configured (or the provided
@@ -996,8 +1628,32 @@ export default {
       const newHeaders = new Headers(mcpRes.headers);
       newHeaders.set("access-control-allow-origin", "*");
       newHeaders.set("access-control-allow-methods", "GET, POST, OPTIONS");
-      newHeaders.set("access-control-allow-headers", "content-type, authorization, mcp-session-id, accept");
-      newHeaders.set("access-control-expose-headers", "mcp-session-id");
+      newHeaders.set("access-control-allow-headers", "content-type, authorization, mcp-session-id, accept, traceparent, tracestate");
+      newHeaders.set("access-control-expose-headers", "mcp-session-id, traceparent, tracestate");
+
+      // ── W3C Trace Context propagation ─────────────────────────────────
+      // Spec: https://www.w3.org/TR/trace-context/
+      // If the calling agent supplied a traceparent header, we echo it so the
+      // FaultKey call appears as a span in the caller's trace. If not, we
+      // generate a fresh one (version=00, flags=01 sampled) so the caller can
+      // correlate this MCP exchange with whatever it does next. This makes
+      // FaultKey a first-class citizen of the customer's existing
+      // OpenTelemetry / Jaeger / Datadog observability stack at zero cost.
+      const inboundTp = request.headers.get("traceparent");
+      if (inboundTp && /^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/i.test(inboundTp)) {
+        newHeaders.set("traceparent", inboundTp);
+        const inboundTs = request.headers.get("tracestate");
+        if (inboundTs) newHeaders.set("tracestate", inboundTs);
+      } else {
+        const traceIdBytes = new Uint8Array(16);
+        const spanIdBytes = new Uint8Array(8);
+        crypto.getRandomValues(traceIdBytes);
+        crypto.getRandomValues(spanIdBytes);
+        const hex = (b: Uint8Array) =>
+          Array.from(b).map((x) => x.toString(16).padStart(2, "0")).join("");
+        newHeaders.set("traceparent", `00-${hex(traceIdBytes)}-${hex(spanIdBytes)}-01`);
+      }
+
       return new Response(mcpRes.body, {
         status: mcpRes.status,
         statusText: mcpRes.statusText,
@@ -1015,4 +1671,121 @@ export default {
     });
     return json({ error: "not_found", path: url.pathname }, 404);
   },
+
+  // ── Cloudflare Workers cron handler (FK-METHOD-2026-005) ──────────────────
+  // Triggered by `triggers.crons` in wrangler.jsonc. Re-runs the canonical
+  // demo scenario suite, recomputes each, builds a manifest, and persists
+  // it in WEEKLY_PROOFS KV. Public read at GET /api/v2/proofs/weekly.
+  async scheduled(
+    event: ScheduledEvent,
+    env: Env,
+    ctx: ExecutionContext
+  ): Promise<void> {
+    ctx.waitUntil(runWeeklyAndPersist(env));
+  },
 };
+
+// ─── FK-METHOD-2026-005 helpers ─────────────────────────────────────────
+async function handleWeeklyProofsRead(env: Env, url: URL): Promise<Response> {
+  if (!env.WEEKLY_PROOFS) {
+    return json(
+      {
+        ruleId: "FK-METHOD-2026-005",
+        ruleName: "Weekly Determinism Proof",
+        status: "weekly_proofs_kv_not_bound",
+        guidance:
+          "Bind WEEKLY_PROOFS KV in wrangler.jsonc and re-deploy. The cron will populate it on the next Monday 12:00 UTC, or trigger POST /api/v2/proofs/run-now with x-admin-token.",
+        suite_version: CANONICAL_SUITE_VERSION,
+        canonical_scenarios: CANONICAL_SCENARIOS.map((s) => ({
+          id: s.id,
+          title: s.title,
+          severity: s.severity,
+          jurisdiction: s.jurisdiction,
+        })),
+      },
+      200
+    );
+  }
+  const wk = url.searchParams.get("week");
+  if (wk) {
+    const raw = await env.WEEKLY_PROOFS.get(`weekly:${wk}`);
+    if (!raw) return json({ error: "week_not_found", week: wk }, 404);
+    return new Response(raw, {
+      status: 200,
+      headers: { "content-type": "application/json", "cache-control": "public, max-age=300" },
+    });
+  }
+  const limit = Math.min(
+    Math.max(parseInt(url.searchParams.get("limit") ?? "12", 10) || 12, 1),
+    52
+  );
+  const manifests: WeeklyManifest[] = await readManifests(env.WEEKLY_PROOFS, limit);
+  return json({
+    ruleId: "FK-METHOD-2026-005",
+    ruleName: "Weekly Determinism Proof",
+    suite_version: CANONICAL_SUITE_VERSION,
+    count: manifests.length,
+    manifests,
+  });
+}
+
+async function runWeeklyAndPersist(env: Env): Promise<void> {
+  if (!env.WEEKLY_PROOFS) {
+    console.warn("FK-METHOD-2026-005: WEEKLY_PROOFS KV not bound; skipping cron run.");
+    return;
+  }
+  const manifest = await runWeeklyDeterminism({
+    env: { CAUSALLAYER_ENV: env.CAUSALLAYER_ENV, STANDALONE_DEMO: env.STANDALONE_DEMO },
+    scoreOnce: (sc) => scoreOneScenario(env, sc),
+    sign: env.ANCHOR_PRIVATE_KEY ? (sha) => signEd25519(env.ANCHOR_PRIVATE_KEY!, sha) : undefined,
+  });
+  await persistManifest(env.WEEKLY_PROOFS, manifest);
+}
+
+async function scoreOneScenario(
+  env: Env,
+  sc: import("./weekly-determinism.js").CanonicalScenario
+): Promise<{ request_hash: string; certificate_id: string; merkle_root: string }> {
+  // Drive the existing standalone engine via callApi. This intentionally
+  // routes through the same code path as a real /mcp tool call so the
+  // weekly proof exercises the production engine, not a separate stub.
+  const submitRes = await callApi<Record<string, unknown>>(
+    env,
+    "POST",
+    "/api/v1/incidents/analyze",
+    sc.input
+  );
+  const cert = (submitRes.certificate ?? submitRes) as Record<string, unknown>;
+  return {
+    request_hash: String(cert.request_hash ?? cert.requestHash ?? ""),
+    certificate_id: String(cert.certificate_id ?? cert.certificateId ?? ""),
+    merkle_root: String(cert.merkle_root ?? cert.merkleRoot ?? ""),
+  };
+}
+
+async function signEd25519(
+  privateKeyBase64: string,
+  messageHex: string
+): Promise<string> {
+  // Workers WebCrypto supports Ed25519 with format=raw on the seed.
+  try {
+    const seed = Uint8Array.from(atob(privateKeyBase64), (c) => c.charCodeAt(0));
+    const key = await crypto.subtle.importKey(
+      "raw",
+      seed,
+      { name: "Ed25519" } as unknown as Parameters<typeof crypto.subtle.importKey>[2],
+      false,
+      ["sign"]
+    );
+    const msg = new TextEncoder().encode(messageHex);
+    const sigBuf = await crypto.subtle.sign(
+      { name: "Ed25519" } as unknown as Parameters<typeof crypto.subtle.sign>[0],
+      key,
+      msg
+    );
+    return btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
+  } catch (e) {
+    console.error("FK-METHOD-2026-005: Ed25519 sign failed", e);
+    return "";
+  }
+}
