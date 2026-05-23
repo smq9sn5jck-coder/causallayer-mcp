@@ -58,6 +58,27 @@ function hashInt(hash: string, offset: number, min: number, max: number): number
 
 import { applyEuRuleSet, euGateEngages, RULE_SET_VERSION as EU_RULE_SET_VERSION, type EuActor, type EuRuleFlags } from "./eu-rules.js";
 import { applyCascadeAttenuation, type CascadeAttenuationOutput } from "./cascade.js";
+import {
+  simulateRemediation,
+  REMEDIATION_CATALOG,
+  REMEDIATION_CATALOG_VERSION,
+  type FourFactorScoring as RemFourFactorScoring,
+  type VerdictShares as RemVerdictShares,
+  type RemediationInput,
+} from "./remediation.js";
+import {
+  evaluateProspectiveResponse,
+  JURISDICTION_THRESHOLDS,
+  PROSPECTIVE_GATE_RULE_ID,
+  PROSPECTIVE_GATE_VERSION,
+  type ProposedAction,
+} from "./prospective-gate.js";
+import { compareJurisdictions,
+  SUPPORTED_JURISDICTIONS,
+  JURISDICTION_OVERLAY_VERSION,
+  type CompareInput as JxCompareInput,
+  type JurisdictionCode,
+} from "./jurisdiction.js";
 
 // ─── Input-sensitive scoring logic ─────────────────────────────────────────
 const SEVERITY_WEIGHTS: Record<string, number> = {
@@ -1025,6 +1046,232 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
     };
   }
 
+  // ── /api/v2/jurisdiction/catalog ──────────────────────────────────────
+  // Public, free read of the supported jurisdictions and which ones are
+  // research stubs in v1. Lets callers make an informed decision about
+  // which jurisdictions to include in compare requests.
+  if (input.method === "GET" && input.path === "/api/v2/jurisdiction/catalog") {
+    return {
+      ...base,
+      ruleId: "FK-METHOD-2026-004",
+      ruleName: "Multi-Jurisdiction Overlay v1",
+      catalogVersion: JURISDICTION_OVERLAY_VERSION,
+      jurisdictions: SUPPORTED_JURISDICTIONS.map((jx) => ({
+        code: jx,
+        name:
+          jx === "AU"
+            ? "Australia"
+            : jx === "EU"
+              ? "European Union / EEA"
+              : jx === "US"
+                ? "United States"
+                : jx === "UK"
+                  ? "United Kingdom"
+                  : "Canada",
+        is_stub: jx === "US" || jx === "UK" || jx === "CA",
+        rule_set_version:
+          jx === "EU"
+            ? "eu-v1"
+            : jx === "AU"
+              ? "au-v1"
+              : `${jx.toLowerCase()}-stub-v1`,
+        primary_authorities:
+          jx === "AU"
+            ? [
+                "Civil Liability Act 2002 (NSW) Pt 4",
+                "Australian Consumer Law (Sch. 2 CCA 2010) §§54-59, 64-64A",
+                "APRA CPS 230 §§17-22, 31",
+                "DISR Voluntary AI Safety Standard (Sept 2024)",
+              ]
+            : jx === "EU"
+              ? [
+                  "AI Act (Reg. 2024/1689) Arts. 9, 13, 26",
+                  "Revised Product Liability Directive 2024/2853 Arts. 6-12",
+                ]
+              : jx === "US"
+                ? [
+                    "Restatement (Third) of Torts: Apportionment §§7-9",
+                    "Restatement (Third) of Torts: Products Liability §2(c)",
+                  ]
+                : jx === "UK"
+                  ? ["Consumer Protection Act 1987 Pt I", "AI (Regulation) Bill HL 11 (2024)"]
+                  : ["AIDA (Bill C-27 Pt 3)", "PIPEDA (RSC 1985 c. P-8.6)"],
+      })),
+    };
+  }
+
+  // ── /api/v2/jurisdiction/overlay ──────────────────────────────────────
+  // Multi-jurisdiction comparison. Takes a canonical attributable map
+  // (party-id → share, sums to 1.0), the actor list with all jurisdiction
+  // role tags, the union of all jurisdiction-specific flags, and an
+  // optional list of target jurisdictions. Returns side-by-side post-
+  // overlay shares per jurisdiction plus the rules that fired in each.
+  // FK-METHOD-2026-004; pure deterministic.
+  if (input.method === "POST" && input.path === "/api/v2/jurisdiction/overlay") {
+    const body = (input.body ?? {}) as Record<string, unknown>;
+    const attributable = body.attributable as Record<string, number> | undefined;
+    const actors = (body.actors as JxCompareInput["actors"] | undefined) ?? [];
+    const flags = (body.flags as JxCompareInput["flags"] | undefined) ?? ({} as JxCompareInput["flags"]);
+    const jurisdictions = body.jurisdictions as JurisdictionCode[] | undefined;
+    const primaryJurisdiction = body.primaryJurisdiction as string | undefined;
+
+    if (!attributable || Object.keys(attributable).length === 0) {
+      return {
+        ...base,
+        error: "missing_required_fields",
+        required: ["attributable", "actors"],
+        guidance:
+          "Submit { attributable: { party_id: share, ... }, actors: [...], flags: {...} }. Optionally jurisdictions: ['AU','EU',...]. GET /api/v2/jurisdiction/catalog for supported jurisdictions and stub status.",
+      };
+    }
+
+    const result = compareJurisdictions({
+      attributable,
+      actors,
+      flags,
+      jurisdictions,
+      primaryJurisdiction,
+    });
+
+    return {
+      ...base,
+      ...result,
+    };
+  }
+
+  // ── /api/v2/gate/evaluate (FK-METHOD-2026-006) ─────────────────────────
+  // Deterministic prospective-evaluation gate. Takes a ProposedAction and
+  // returns one of three verdicts: allow / require_revision / block. Same
+  // four-factor engine that issues post-hoc certificates, run prospectively
+  // on structured action metadata (not raw prose). Emits a certificate
+  // pre-image hash so the post-hoc certificate (if issued) chains canonically.
+  if (input.method === "POST" && input.path === "/api/v2/gate/evaluate") {
+    const body = (input.body ?? {}) as Record<string, unknown>;
+    const action = body.action as ProposedAction | undefined;
+    const overrides = body.overrides as {
+      allow_below?: number;
+      block_at_or_above?: number;
+      rationale?: string;
+    } | undefined;
+
+    if (!action || !action.action_id || !action.action_type || !action.acting_agent_id) {
+      return {
+        ...base,
+        error: "missing_required_fields",
+        required: ["action.action_id", "action.action_type", "action.acting_agent_id", "action.acting_agent_type", "action.severity_estimate"],
+        guidance:
+          "Submit { action: { action_id, action_type, acting_agent_id, acting_agent_type, severity_estimate, cascade_depth?, jurisdiction?, eu_flags?, context_flags? } }. Optionally overrides: { allow_below, block_at_or_above, rationale }. Override rationale is required so the audit trail is complete.",
+      };
+    }
+    if (overrides && (overrides.allow_below !== undefined || overrides.block_at_or_above !== undefined) && !overrides.rationale) {
+      return {
+        ...base,
+        error: "override_missing_rationale",
+        guidance: "Threshold overrides require a rationale field citing the governance basis (e.g. 'ISO/IEC 42001 SoA §3.2 approval'). This is enforced so the override is auditable.",
+      };
+    }
+
+    const decision = await evaluateProspectiveResponse(action, {
+      overrides: overrides?.rationale
+        ? {
+            allow_below: overrides.allow_below,
+            block_at_or_above: overrides.block_at_or_above,
+            rationale: overrides.rationale,
+          }
+        : undefined,
+    });
+
+    return {
+      ...base,
+      ...decision,
+    };
+  }
+
+  // ── /api/v2/gate/thresholds ─────────────────────────────────────────────
+  // Public, free read of the per-jurisdiction allow/block thresholds. Lets
+  // callers preview the band without having to hard-code or guess them.
+  if (input.method === "GET" && input.path === "/api/v2/gate/thresholds") {
+    return {
+      ...base,
+      ruleId: PROSPECTIVE_GATE_RULE_ID,
+      ruleVersion: PROSPECTIVE_GATE_VERSION,
+      thresholds: JURISDICTION_THRESHOLDS,
+      notes: [
+        "EU is strictest (AI Act Art. 9 risk-management baseline).",
+        "AU is strict for regulated sectors (ACL Pt 3-2 + APRA CPS 230).",
+        "Production callers can loosen via overrides on /api/v2/gate/evaluate; a rationale is REQUIRED so audit trail is complete.",
+      ],
+    };
+  }
+
+  // ── /api/v2/remediation/catalog ─────────────────────────────────────────
+  // Public, free read of the remediation catalog. Lets callers (and the
+  // demo UI) discover the available remediation IDs without having to
+  // hard-code them.
+  if (input.method === "GET" && input.path === "/api/v2/remediation/catalog") {
+    return {
+      ...base,
+      ruleId: "FK-METHOD-2026-003",
+      ruleName: "Counterfactual Remediation Simulator v1",
+      catalogVersion: REMEDIATION_CATALOG_VERSION,
+      remediations: Object.values(REMEDIATION_CATALOG).map((r) => ({
+        id: r.id,
+        label: r.label,
+        targetType: r.targetType,
+        factorDeltas: r.factorDeltas,
+        maxReductionPp: r.maxReductionPp,
+        citation: r.citation,
+        rationale: r.rationale,
+      })),
+    };
+  }
+
+  // ── /api/v2/remediation/simulate ────────────────────────────────────────
+  // Closed-form counterfactual: takes a verdict + four-factor scoring +
+  // a list of remediation IDs from the catalog and returns the apportioned
+  // shares under each remediation in isolation, plus the composite where
+  // they all stack. Pure deterministic; same inputs -> byte-identical
+  // output. See docs/simulate-remediation.md for the citable design doc.
+  if (input.method === "POST" && input.path === "/api/v2/remediation/simulate") {
+    const body = (input.body ?? {}) as Record<string, unknown>;
+    const verdict = body.verdict as RemVerdictShares | undefined;
+    const fourFactor = body.fourFactorScoring as RemFourFactorScoring | undefined;
+    const remediations = (body.remediations as RemediationInput[] | undefined) ?? [];
+    const agents = ((body.agents as Array<{ id: string; type?: string }> | undefined) ??
+      []).map((a) => ({ id: a.id, type: a.type }));
+
+    if (!verdict || !fourFactor) {
+      return {
+        ...base,
+        error: "missing_required_fields",
+        required: ["verdict", "fourFactorScoring"],
+        guidance:
+          "Submit the verdict block and the fourFactorScoring block from the certificate, plus the agents list and the remediations to simulate. GET /api/v2/remediation/catalog to discover valid remediation IDs.",
+      };
+    }
+    if (!Array.isArray(remediations) || remediations.length === 0) {
+      return {
+        ...base,
+        error: "no_remediations_supplied",
+        guidance:
+          "Submit at least one remediation in the `remediations` array. Each entry is { id: <catalog-id>, appliedToParty?: <agent-id> }. GET /api/v2/remediation/catalog for valid ids.",
+      };
+    }
+
+    const result = simulateRemediation({
+      verdict,
+      fourFactorScoring: fourFactor,
+      agents,
+      remediations,
+    });
+
+    return {
+      ...base,
+      ...result,
+      catalogVersion: REMEDIATION_CATALOG_VERSION,
+    };
+  }
+
   // ── /api/v2/verify/certificate ───────────────────────────────────────────
   if (input.method === "POST" && input.path === "/api/v2/verify/certificate") {
     const body = (input.body ?? {}) as Record<string, unknown>;
@@ -1161,6 +1408,13 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
     availableEndpoints: [
       { method: "POST", path: "/api/v1/incidents/analyze", description: "Submit incident for liability attribution" },
       { method: "POST", path: "/api/v2/verify/certificate", description: "Verify a CausalCertificate" },
+      { method: "POST", path: "/api/v2/verify/recompute", description: "Re-derive a certificate from canonical input and compare byte-for-byte" },
+      { method: "GET", path: "/api/v2/remediation/catalog", description: "List the FK-METHOD-2026-003 remediation catalog" },
+      { method: "POST", path: "/api/v2/remediation/simulate", description: "Simulate counterfactual apportionment under one or more remediations" },
+      { method: "GET", path: "/api/v2/jurisdiction/catalog", description: "List supported jurisdictions and which overlays are research stubs in v1" },
+      { method: "POST", path: "/api/v2/jurisdiction/overlay", description: "Compare apportionment side-by-side across AU, EU, US, UK, CA (FK-METHOD-2026-004)" },
+      { method: "POST", path: "/api/v2/gate/evaluate", description: "Deterministic prospective-evaluation gate (FK-METHOD-2026-006): allow / require_revision / block on a ProposedAction BEFORE response delivery" },
+      { method: "GET", path: "/api/v2/gate/thresholds", description: "Read per-jurisdiction prospective-gate thresholds" },
       { method: "GET", path: "/api/v2/anchor/status", description: "Get anchor log status" },
       { method: "GET", path: "/api/v2/issuers", description: "Query issuer registry" },
       { method: "GET", path: "/api/v1/regulatory-lookup", description: "Regulatory framework lookup" },
