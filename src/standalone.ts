@@ -307,7 +307,13 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
     const causalNodes = events.map((e, i) => ({
       id: e.id,
       type: e.type ?? "event",
-      timestamp: e.timestamp ?? new Date(Date.now() - (events.length - i) * 3600000).toISOString(),
+      // Deterministic synthetic timestamp when none supplied: derive from inputHash
+      // + event index, anchored to a fixed epoch. Ensures recompute produces identical
+      // graph nodes regardless of wall-clock. Real timestamps from caller pass through.
+      timestamp: e.timestamp ?? new Date(
+        Date.parse("2024-01-01T00:00:00Z") +
+        hashInt(hash, 16 + i, 0, 365 * 24) * 3600000
+      ).toISOString(),
       actor: e.actor_id ?? (agents[i % agents.length]?.id ?? "unknown"),
       description: e.description ?? `Event ${i + 1}`,
     }));
@@ -904,6 +910,118 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
       },
       timing: { totalMs, perturbationsMs },
       auditTrail,
+    };
+  }
+
+  // ── /api/v2/verify/recompute ──────────────────────────────────────────────
+  // Real verifier: takes a certificate AND its canonical input, re-runs the
+  // engine, and compares the recomputed certificate to the claimed one.
+  // This is the third-party-replicable verification path: anyone with the
+  // canonical input can prove the certificate was generated faithfully by
+  // the engine, without trusting the issuer's signature.
+  if (input.method === "POST" && input.path === "/api/v2/verify/recompute") {
+    const body = (input.body ?? {}) as Record<string, unknown>;
+    const claimed = body.certificate as Record<string, unknown> | undefined;
+    const canonical = body.canonicalInput as Record<string, unknown> | undefined;
+
+    if (!claimed || !canonical) {
+      return {
+        ...base,
+        error: "missing_required_fields",
+        required: ["certificate", "canonicalInput"],
+        guidance: "Submit both the certificate (the JSON returned by /api/v1/incidents/analyze) and the canonical input (the original incident body that produced it). The engine will re-run and compare.",
+      };
+    }
+
+    // Recurse: re-run analyze with the canonical input to produce a fresh cert.
+    const recomputed = await standaloneResponse({
+      method: "POST",
+      path: "/api/v1/incidents/analyze",
+      body: canonical,
+    }) as Record<string, unknown>;
+
+    // Compare critical fields between claimed and recomputed.
+    const fieldsToCheck = [
+      "certificateId",
+      "_demo_request_hash",
+      "verdict",
+      "causalGraph",
+      "fourFactorScoring",
+      "deviationTaxonomy",
+      "euRuleOverlay",
+      "cascadeAttenuation",
+      "damages",
+      "underwriting",
+    ];
+
+    const fieldsMatched: string[] = [];
+    const fieldsDrifted: { field: string; claimed: unknown; recomputed: unknown }[] = [];
+
+    for (const field of fieldsToCheck) {
+      const c = (claimed as Record<string, unknown>)[field];
+      const r = (recomputed as Record<string, unknown>)[field];
+      if (c === undefined && r === undefined) continue;
+      const claimedStr = JSON.stringify(c);
+      const recomputedStr = JSON.stringify(r);
+      if (claimedStr === recomputedStr) {
+        fieldsMatched.push(field);
+      } else {
+        fieldsDrifted.push({ field, claimed: c, recomputed: r });
+      }
+    }
+
+    // Anchor fields: extract merkleRoot from both for direct comparison.
+    const claimedAnchor = (claimed.anchor as Record<string, unknown> | undefined) ?? {};
+    const recomputedAnchor = (recomputed.anchor as Record<string, unknown> | undefined) ?? {};
+    const claimedMerkle = claimedAnchor.merkleRoot as string | undefined;
+    const recomputedMerkle = recomputedAnchor.merkleRoot as string | undefined;
+    const merkleMatch = claimedMerkle === recomputedMerkle && claimedMerkle !== undefined;
+
+    const allMatched = fieldsDrifted.length === 0 && merkleMatch;
+
+    return {
+      ...base,
+      verification: {
+        verified: allMatched,
+        method: "recompute",
+        claim: "Recomputing the engine on the supplied canonical input produces a byte-identical certificate.",
+        verdict: allMatched
+          ? "PASS — recomputed certificate matches the claimed certificate on all checked fields."
+          : `FAIL — ${fieldsDrifted.length} field(s) drifted between claimed and recomputed; merkleRoot match: ${merkleMatch}.`,
+      },
+      comparison: {
+        fieldsMatched,
+        fieldsDrifted,
+        merkleRoot: {
+          claimed: claimedMerkle ?? null,
+          recomputed: recomputedMerkle ?? null,
+          match: merkleMatch,
+        },
+        certificateId: {
+          claimed: (claimed.certificateId as string | undefined) ?? null,
+          recomputed: (recomputed.certificateId as string | undefined) ?? null,
+          match: claimed.certificateId === recomputed.certificateId,
+        },
+        request_hash: {
+          claimed: (claimed._demo_request_hash as string | undefined) ?? null,
+          recomputed: (recomputed._demo_request_hash as string | undefined) ?? null,
+          match: claimed._demo_request_hash === recomputed._demo_request_hash,
+        },
+      },
+      recomputed,
+      methodology: {
+        steps: [
+          "Receive (certificate, canonicalInput) pair from caller.",
+          "Re-run /api/v1/incidents/analyze with the supplied canonicalInput.",
+          "Compare critical fields (certificateId, request_hash, merkleRoot, verdict, causalGraph, fourFactorScoring, deviationTaxonomy, euRuleOverlay, cascadeAttenuation, damages, underwriting) between claimed and recomputed.",
+          "Report PASS only if every checked field matches byte-for-byte.",
+        ],
+        defensibility: "This verification path requires no trust in the issuer or signing key. Anyone with the canonical input and access to the engine can independently confirm the certificate was generated faithfully by the documented algorithm. Combined with the public determinism log (proofs/), this provides three-party-replicable evidence: the issuer claims, the engine re-derives, the auditor confirms.",
+        limits: [
+          "Recomputation depends on the engine version. If the engine is upgraded after a certificate was issued, fields tied to engine version may legitimately drift. The certificate's engineVersion field documents which version was originally used.",
+          "Recomputation does NOT verify the Bitcoin OpenTimestamps proof — that requires the anchor-log Git repository and OpenTimestamps Bitcoin headers. Use /api/v2/verify/certificate for the signature path and /api/v2/anchor/<version> for the anchor proof.",
+        ],
+      },
     };
   }
 
