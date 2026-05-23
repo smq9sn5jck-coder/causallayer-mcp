@@ -56,6 +56,7 @@ import {
   type RequestMeta,
 } from "./demo.js";
 import { standaloneResponse } from "./standalone.js";
+import { convertOtlpToIncident, type OtlpJson } from "./otel-ingest.js";
 
 // ─── Bindings ──────────────────────────────────────────────────────────────
 
@@ -614,6 +615,136 @@ export class CausalLayerMCP extends McpAgent<Env, unknown, SessionProps> {
                       tool: "verify_certificate",
                       credits_charged: priceFor(env, "verify_certificate"),
                     },
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }) as Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }>;
+      }
+    );
+
+    // ── Tool 1b: submit_otel_trace ────────────────────────────
+    // Same engine as submit_incident, but accepts an OTLP JSON trace export
+    // directly. Each span becomes a FaultKey event; service.name groups
+    // spans into agents; W3C trace_id and span_id propagate as evidence
+    // pointers on the causal-graph edges. PII scan, deterministic_only, and
+    // billing reuse the submit_incident path so policy stays consistent.
+    this.server.registerTool(
+      "submit_otel_trace",
+      {
+        description:
+          "Convert an OpenTelemetry OTLP JSON trace into a FaultKey incident and " +
+          "return the same deterministic CausalCertificate as submit_incident. " +
+          "Each span becomes an event; service.name groups spans into agents; " +
+          "W3C trace_id and span_id propagate as evidence pointers on the causal " +
+          "graph edges. " +
+          `Cost: ${priceFor(env, "submit_incident")} credits (same as submit_incident). ` +
+          "Three guardrails apply: PII scan, deterministic-only acknowledgement, " +
+          "and minimum evidence (auto-satisfied when the trace has at least 1 span).",
+        inputSchema: {
+          title: z.string().min(3),
+          otlp: z
+            .record(z.unknown())
+            .describe(
+              "OTLP JSON payload with resourceSpans[]. See " +
+                "https://opentelemetry.io/docs/specs/otlp/#json-protobuf-encoding"
+            ),
+          category: z.string().optional(),
+          jurisdiction: z.string().optional(),
+          financial_impact_cents: z.number().int().nonnegative().nullable().optional(),
+          currency: z.string().length(3).optional(),
+          deterministic_only: z
+            .literal(true)
+            .describe("G2: Must be true. Acknowledges CausalLayer is deterministic."),
+          pii_acknowledged: z
+            .boolean()
+            .default(false)
+            .describe(
+              "G1: Set to true ONLY if PII handling is permitted by your data agreement. " +
+                "OTLP traces frequently leak user/session ids in attributes."
+            ),
+        },
+      },
+      async (input) => {
+        // Convert OTLP → FaultKey incident (pure, deterministic)
+        let conversion;
+        try {
+          conversion = convertOtlpToIncident(input.otlp as OtlpJson, {
+            title: input.title,
+            category: input.category,
+            jurisdiction: input.jurisdiction,
+            financial_impact_cents: input.financial_impact_cents,
+            currency: input.currency,
+            pii_acknowledged: input.pii_acknowledged ?? false,
+          });
+        } catch (err) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text: `OTLP_INGEST_ERROR: ${err instanceof Error ? err.message : String(err)}`,
+              },
+            ],
+          };
+        }
+
+        // G1 — PII scan over reconstructed event descriptions
+        const blob = JSON.stringify({
+          title: conversion.incident.title,
+          events: conversion.incident.events.map((e: { description: string }) => ({ description: e.description })),
+        });
+        const piiHits = scanForPii(blob);
+        if (piiHits.length > 0 && !input.pii_acknowledged) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: "text",
+                text:
+                  `GUARDRAIL G1 (PII_DETECTED): patterns=${piiHits.join(",")}. ` +
+                  `OTLP traces frequently leak user/session ids; redact attributes or set pii_acknowledged=true.`,
+              },
+            ],
+          };
+        }
+
+        return withBilling(env, tenantId, "submit_incident", meta, async () => {
+          const upstream = await callApi(env, "POST", "/api/v1/incidents/analyze", {
+            title: conversion.incident.title,
+            description: conversion.incident.description,
+            category: conversion.incident.category,
+            severity: conversion.incident.severity,
+            jurisdiction: conversion.incident.jurisdiction,
+            financial_impact_cents: conversion.incident.financial_impact_cents,
+            currency: conversion.incident.currency,
+            agents: conversion.incident.agents,
+            events: conversion.incident.events,
+          });
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    env: env.CAUSALLAYER_ENV,
+                    tenant_id: tenantId,
+                    guardrails: {
+                      pii_scan:
+                        piiHits.length === 0 ? "clean" : `acknowledged: ${piiHits.join(",")}`,
+                      deterministic_only: true,
+                      evidence_required: true,
+                    },
+                    billing: {
+                      tool: "submit_otel_trace",
+                      credits_charged: priceFor(env, "submit_incident"),
+                    },
+                    otel_ingest: conversion.stats,
+                    otel_ingest_warnings: conversion.warnings,
+                    result: upstream,
                   },
                   null,
                   2
