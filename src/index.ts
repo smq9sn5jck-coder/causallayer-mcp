@@ -57,6 +57,14 @@ import {
 } from "./demo.js";
 import { standaloneResponse } from "./standalone.js";
 import { convertOtlpToIncident, type OtlpJson } from "./otel-ingest.js";
+import {
+  runWeeklyDeterminism,
+  persistManifest,
+  readManifests,
+  CANONICAL_SCENARIOS,
+  CANONICAL_SUITE_VERSION,
+  type WeeklyManifest,
+} from "./weekly-determinism.js";
 
 // ─── Bindings ──────────────────────────────────────────────────────────────
 
@@ -78,6 +86,11 @@ export interface Env extends BillingEnv {
 
   // McpAgent Durable Object binding
   MCP_OBJECT: DurableObjectNamespace;
+
+  // FK-METHOD-2026-005 weekly determinism cron
+  WEEKLY_PROOFS?: KVNamespace;
+  ANCHOR_PRIVATE_KEY?: string; // base64 raw 32-byte Ed25519 seed (production only)
+  ADMIN_TOKEN?: string; // gates POST /api/v2/proofs/run-now
 }
 
 function parseUsd(v: string | undefined, fallback: number): number {
@@ -1275,6 +1288,50 @@ export default {
       return res;
     }
 
+    // ── /api/v2/proofs/weekly (FK-METHOD-2026-005) ────────────────────────
+    // Public read of the rolling weekly determinism manifest log.
+    // ?limit=N (1..52) controls how many weeks to return.
+    // ?week=YYYY-Www returns a single week if present.
+    if (url.pathname === "/api/v2/proofs/weekly" && request.method === "GET") {
+      const res = await handleWeeklyProofsRead(env, url);
+      await logEvent("api_request", request, env, ctx, {
+        request_path: url.pathname,
+        method: request.method,
+        response_status: res.status,
+        duration_ms: Date.now() - t0,
+      });
+      return res;
+    }
+
+    // ── /api/v2/proofs/run-now (FK-METHOD-2026-005) ───────────────────────
+    // ADMIN_TOKEN-gated. Triggers a manifest run outside the cron schedule.
+    // Returns 404 (not 401) on unauth to avoid signaling the surface.
+    if (url.pathname === "/api/v2/proofs/run-now" && request.method === "POST") {
+      const provided = request.headers.get("x-admin-token") ?? "";
+      if (!env.ADMIN_TOKEN || provided !== env.ADMIN_TOKEN) {
+        await logEvent("api_error", request, env, ctx, {
+          request_path: url.pathname,
+          method: request.method,
+          response_status: 404,
+          duration_ms: Date.now() - t0,
+          error_message: "proofs_runnow_unauth_404",
+        });
+        return json({ error: "not_found", path: url.pathname }, 404);
+      }
+      if (!env.WEEKLY_PROOFS) {
+        return json({ error: "weekly_proofs_kv_not_bound" }, 503);
+      }
+      const manifest = await runWeeklyDeterminism({
+        env: { CAUSALLAYER_ENV: env.CAUSALLAYER_ENV, STANDALONE_DEMO: env.STANDALONE_DEMO },
+        scoreOnce: (sc) => scoreOneScenario(env, sc),
+        sign: env.ANCHOR_PRIVATE_KEY
+          ? (sha) => signEd25519(env.ANCHOR_PRIVATE_KEY!, sha)
+          : undefined,
+      });
+      await persistManifest(env.WEEKLY_PROOFS, manifest);
+      return json({ ok: true, manifest });
+    }
+
         // /admin/stats — ADMIN_TOKEN-gated; per-tenant + Cloudflare Workers Analytics
     //
     // Hardening note: when no ADMIN_TOKEN is configured (or the provided
@@ -1484,4 +1541,121 @@ export default {
     });
     return json({ error: "not_found", path: url.pathname }, 404);
   },
+
+  // ── Cloudflare Workers cron handler (FK-METHOD-2026-005) ──────────────────
+  // Triggered by `triggers.crons` in wrangler.jsonc. Re-runs the canonical
+  // demo scenario suite, recomputes each, builds a manifest, and persists
+  // it in WEEKLY_PROOFS KV. Public read at GET /api/v2/proofs/weekly.
+  async scheduled(
+    event: ScheduledEvent,
+    env: Env,
+    ctx: ExecutionContext
+  ): Promise<void> {
+    ctx.waitUntil(runWeeklyAndPersist(env));
+  },
 };
+
+// ─── FK-METHOD-2026-005 helpers ─────────────────────────────────────────
+async function handleWeeklyProofsRead(env: Env, url: URL): Promise<Response> {
+  if (!env.WEEKLY_PROOFS) {
+    return json(
+      {
+        ruleId: "FK-METHOD-2026-005",
+        ruleName: "Weekly Determinism Proof",
+        status: "weekly_proofs_kv_not_bound",
+        guidance:
+          "Bind WEEKLY_PROOFS KV in wrangler.jsonc and re-deploy. The cron will populate it on the next Monday 12:00 UTC, or trigger POST /api/v2/proofs/run-now with x-admin-token.",
+        suite_version: CANONICAL_SUITE_VERSION,
+        canonical_scenarios: CANONICAL_SCENARIOS.map((s) => ({
+          id: s.id,
+          title: s.title,
+          severity: s.severity,
+          jurisdiction: s.jurisdiction,
+        })),
+      },
+      200
+    );
+  }
+  const wk = url.searchParams.get("week");
+  if (wk) {
+    const raw = await env.WEEKLY_PROOFS.get(`weekly:${wk}`);
+    if (!raw) return json({ error: "week_not_found", week: wk }, 404);
+    return new Response(raw, {
+      status: 200,
+      headers: { "content-type": "application/json", "cache-control": "public, max-age=300" },
+    });
+  }
+  const limit = Math.min(
+    Math.max(parseInt(url.searchParams.get("limit") ?? "12", 10) || 12, 1),
+    52
+  );
+  const manifests: WeeklyManifest[] = await readManifests(env.WEEKLY_PROOFS, limit);
+  return json({
+    ruleId: "FK-METHOD-2026-005",
+    ruleName: "Weekly Determinism Proof",
+    suite_version: CANONICAL_SUITE_VERSION,
+    count: manifests.length,
+    manifests,
+  });
+}
+
+async function runWeeklyAndPersist(env: Env): Promise<void> {
+  if (!env.WEEKLY_PROOFS) {
+    console.warn("FK-METHOD-2026-005: WEEKLY_PROOFS KV not bound; skipping cron run.");
+    return;
+  }
+  const manifest = await runWeeklyDeterminism({
+    env: { CAUSALLAYER_ENV: env.CAUSALLAYER_ENV, STANDALONE_DEMO: env.STANDALONE_DEMO },
+    scoreOnce: (sc) => scoreOneScenario(env, sc),
+    sign: env.ANCHOR_PRIVATE_KEY ? (sha) => signEd25519(env.ANCHOR_PRIVATE_KEY!, sha) : undefined,
+  });
+  await persistManifest(env.WEEKLY_PROOFS, manifest);
+}
+
+async function scoreOneScenario(
+  env: Env,
+  sc: import("./weekly-determinism.js").CanonicalScenario
+): Promise<{ request_hash: string; certificate_id: string; merkle_root: string }> {
+  // Drive the existing standalone engine via callApi. This intentionally
+  // routes through the same code path as a real /mcp tool call so the
+  // weekly proof exercises the production engine, not a separate stub.
+  const submitRes = await callApi<Record<string, unknown>>(
+    env,
+    "POST",
+    "/api/v1/incidents/analyze",
+    sc.input
+  );
+  const cert = (submitRes.certificate ?? submitRes) as Record<string, unknown>;
+  return {
+    request_hash: String(cert.request_hash ?? cert.requestHash ?? ""),
+    certificate_id: String(cert.certificate_id ?? cert.certificateId ?? ""),
+    merkle_root: String(cert.merkle_root ?? cert.merkleRoot ?? ""),
+  };
+}
+
+async function signEd25519(
+  privateKeyBase64: string,
+  messageHex: string
+): Promise<string> {
+  // Workers WebCrypto supports Ed25519 with format=raw on the seed.
+  try {
+    const seed = Uint8Array.from(atob(privateKeyBase64), (c) => c.charCodeAt(0));
+    const key = await crypto.subtle.importKey(
+      "raw",
+      seed,
+      { name: "Ed25519" } as unknown as Parameters<typeof crypto.subtle.importKey>[2],
+      false,
+      ["sign"]
+    );
+    const msg = new TextEncoder().encode(messageHex);
+    const sigBuf = await crypto.subtle.sign(
+      { name: "Ed25519" } as unknown as Parameters<typeof crypto.subtle.sign>[0],
+      key,
+      msg
+    );
+    return btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
+  } catch (e) {
+    console.error("FK-METHOD-2026-005: Ed25519 sign failed", e);
+    return "";
+  }
+}

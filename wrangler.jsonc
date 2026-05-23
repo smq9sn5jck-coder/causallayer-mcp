@@ -56,12 +56,24 @@
   },
   "observability": { "enabled": true },
 
+  // FK-METHOD-2026-005 weekly determinism cron. Mondays 12:00 UTC.
+  // The scheduled() handler re-runs the canonical demo scenario suite,
+  // recomputes each, verifies certificate hashes match, and writes one
+  // signed JSONL line to the WEEKLY_PROOFS KV. The proof log is then
+  // exposed publicly via GET /api/v2/proofs/weekly.
+  "triggers": { "crons": ["0 12 * * 1"] },
+
   // KV namespace for the credit ledger. Replace the id values after running
   // `wrangler kv:namespace create LEDGER` (and the --env <name> variants).
+  // WEEKLY_PROOFS holds the FK-METHOD-2026-005 weekly proof log.
   "kv_namespaces": [
     {
       "binding": "LEDGER",
       "id": "e2323ffd683b4242a835e26a8f01d693"
+    },
+    {
+      "binding": "WEEKLY_PROOFS",
+      "id": "REPLACE_WITH_WEEKLY_PROOFS_KV_ID"
     }
   ],
 
@@ -105,10 +117,15 @@
         ]
       },
       "observability": { "enabled": true },
+      "triggers": { "crons": ["0 12 * * 1"] },
       "kv_namespaces": [
         {
           "binding": "LEDGER",
           "id": "756cd4a6850a4e9e80837ae764d15ef7"
+        },
+        {
+          "binding": "WEEKLY_PROOFS",
+          "id": "REPLACE_WITH_WEEKLY_PROOFS_KV_ID"
         }
       ],
       "vars": {
