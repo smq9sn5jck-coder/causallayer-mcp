@@ -73,7 +73,33 @@
     },
     {
       "binding": "WEEKLY_PROOFS",
-      "id": "REPLACE_WITH_WEEKLY_PROOFS_KV_ID"
+      "id": "dc7d2daef1af447e8ad0d9d877a8dfca"
+    }
+  ],
+
+  // D1 database for certificate persistence, lead capture, install pings.
+  // Region: APAC (AU jurisdiction platform). Schema in /home/ubuntu/faultkey-d1-schema.sql.
+  "d1_databases": [
+    {
+      "binding": "FAULTKEY_DB",
+      "database_name": "faultkey-prod",
+      "database_id": "a27225b5-5c46-452b-a3a7-09cf4cc7dffa"
+    }
+  ],
+
+  // R2 bucket for certificate PDFs and large artifact storage.
+  "r2_buckets": [
+    {
+      "binding": "FAULTKEY_R2",
+      "bucket_name": "faultkey"
+    }
+  ],
+
+  // Workers Analytics Engine — high-cardinality event sink (cheap, fast, no row limit).
+  "analytics_engine_datasets": [
+    {
+      "binding": "ANALYTICS",
+      "dataset": "faultkey_events"
     }
   ],
 
@@ -125,7 +151,26 @@
         },
         {
           "binding": "WEEKLY_PROOFS",
-          "id": "REPLACE_WITH_WEEKLY_PROOFS_KV_ID"
+          "id": "dc7d2daef1af447e8ad0d9d877a8dfca"
+        }
+      ],
+      "d1_databases": [
+        {
+          "binding": "FAULTKEY_DB",
+          "database_name": "faultkey-prod",
+          "database_id": "a27225b5-5c46-452b-a3a7-09cf4cc7dffa"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "FAULTKEY_R2",
+          "bucket_name": "faultkey"
+        }
+      ],
+      "analytics_engine_datasets": [
+        {
+          "binding": "ANALYTICS",
+          "dataset": "faultkey_events"
         }
       ],
       "vars": {
