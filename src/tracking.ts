@@ -29,6 +29,7 @@ export interface TrackingEnv {
   FAULTKEY_R2?: R2Bucket;
   ANALYTICS?: AnalyticsEngineDataset;
   IP_HASH_SALT?: string; // Cloudflare secret
+  TURNSTILE_SECRET?: string; // Cloudflare secret for Turnstile bot-protection verify
 }
 
 // Re-exported types so callers don't need to depend on Cloudflare Workers types.
@@ -450,6 +451,16 @@ export async function handleLeadCapture(
       return json({ error: "Valid email required" }, 400);
     }
 
+    // Turnstile bot verification (skip-able only if secret not configured for backwards compat)
+    if (env.TURNSTILE_SECRET) {
+      const token = String(body.turnstile_token || "");
+      const ipForTs = getClientIp(request);
+      const verified = await verifyTurnstile(token, env.TURNSTILE_SECRET, ipForTs);
+      if (!verified) {
+        return json({ error: "Bot verification failed. Refresh and try again." }, 403);
+      }
+    }
+
     const company = truncate(String(body.company || ""), 200);
     const role = truncate(String(body.role || ""), 64);
     const useCase = truncate(String(body.use_case || ""), 500);
@@ -676,4 +687,34 @@ function renderAdminDashboard(data: Record<string, unknown>): string {
 </table>
 </body>
 </html>`;
+}
+
+
+// ---------------------------------------------------------------------------
+// Turnstile token verification (Cloudflare's CAPTCHA replacement)
+// Docs: https://developers.cloudflare.com/turnstile/get-started/server-side-validation/
+// ---------------------------------------------------------------------------
+async function verifyTurnstile(
+  token: string,
+  secret: string,
+  remoteIp: string
+): Promise<boolean> {
+  if (!token) return false;
+  try {
+    const form = new FormData();
+    form.append("secret", secret);
+    form.append("response", token);
+    if (remoteIp) form.append("remoteip", remoteIp);
+
+    const resp = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      body: form,
+    });
+    if (!resp.ok) return false;
+    const data = (await resp.json()) as { success?: boolean };
+    return Boolean(data.success);
+  } catch (e) {
+    console.error("[tracking] verifyTurnstile failed:", e);
+    return false;
+  }
 }
