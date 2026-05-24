@@ -65,6 +65,15 @@ import {
   CANONICAL_SUITE_VERSION,
   type WeeklyManifest,
 } from "./weekly-determinism.js";
+import {
+  persistCertificate,
+  handleCertPage,
+  handleInstallPing,
+  handleLeadCapture,
+  handleAdminDashboard,
+  type TrackingEnv,
+  type CertRow,
+} from "./tracking.js";
 
 // ─── Bindings ──────────────────────────────────────────────────────────────
 
@@ -91,6 +100,13 @@ export interface Env extends BillingEnv {
   WEEKLY_PROOFS?: KVNamespace;
   ANCHOR_PRIVATE_KEY?: string; // base64 raw 32-byte Ed25519 seed (production only)
   ADMIN_TOKEN?: string; // gates POST /api/v2/proofs/run-now
+
+  // Tracking & persistence (D1 + R2 + Analytics Engine).
+  // All optional so worker still boots if bindings missing; tracking gracefully no-ops.
+  FAULTKEY_DB?: TrackingEnv["FAULTKEY_DB"];
+  FAULTKEY_R2?: TrackingEnv["FAULTKEY_R2"];
+  ANALYTICS?: TrackingEnv["ANALYTICS"];
+  IP_HASH_SALT?: string; // 32+ char random secret
 }
 
 function parseUsd(v: string | undefined, fallback: number): number {
@@ -121,6 +137,56 @@ const PII_PATTERNS: Array<{ name: string; rx: RegExp }> = [
 
 function scanForPii(text: string): string[] {
   return PII_PATTERNS.filter((p) => p.rx.test(text)).map((p) => p.name);
+}
+
+// ─── Cert extraction from MCP JSON-RPC response (best-effort, never throws) ───
+
+type ExtractedCert = {
+  certificateId?: string;
+  _demo_request_hash?: string;
+  request_hash?: string;
+  incident?: { category?: string; title?: string; severity?: string; jurisdiction?: string };
+  verdict?: { primaryShare?: number };
+  damages?: { totalCents?: number };
+  anchor?: { merkleRoot?: string };
+};
+
+/**
+ * Walk a JSON-RPC response body looking for a CausalCertificateV1 object.
+ * The MCP SDK wraps tool results as { result: { content: [{ type:"text", text:"<json>" }] } }.
+ * We parse the inner text and extract the certificate sub-object.
+ * Returns null if no cert is found or parsing fails. Never throws.
+ */
+function extractCertFromMcpResponse(bodyText: string): ExtractedCert | null {
+  try {
+    const parsed: unknown = JSON.parse(bodyText);
+    const result = (parsed as { result?: unknown }).result;
+    if (!result || typeof result !== "object") return null;
+    const content = (result as { content?: unknown }).content;
+    if (!Array.isArray(content)) return null;
+    for (const block of content as Array<{ type?: string; text?: string }>) {
+      if (block && block.type === "text" && typeof block.text === "string") {
+        try {
+          const inner = JSON.parse(block.text) as Record<string, unknown>;
+          const innerResult = (inner.result ?? inner) as Record<string, unknown>;
+          if (innerResult && typeof innerResult === "object" && "certificateId" in innerResult) {
+            return innerResult as ExtractedCert;
+          }
+          const maybeCert = (innerResult.certificate ?? innerResult.cert) as
+            | Record<string, unknown>
+            | undefined;
+          if (maybeCert && "certificateId" in maybeCert) {
+            return maybeCert as ExtractedCert;
+          }
+        } catch {
+          // Not JSON — try next content block
+        }
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 // ─── HTTP helper to upstream API ───────────────────────────────────────────
@@ -1280,6 +1346,39 @@ export default {
       const { serveTryPage } = await import("./try-page.js");
       return serveTryPage(request, env);
     }
+
+    // ─── Tracking & persistence routes ───────────────────────────────────────
+    // Shareable certificate URLs: /cert/{id}, /cert/{id}/json, /cert/{id}/pdf
+    if (url.pathname.startsWith("/cert/")) {
+      const certRes = await handleCertPage(url, request, env, ctx);
+      if (certRes) {
+        await logEvent("api_request", request, env, ctx, {
+          request_path: url.pathname,
+          method: request.method,
+          response_status: certRes.status,
+          duration_ms: Date.now() - t0,
+        });
+        return certRes;
+      }
+    }
+
+    // CLI install ping (npx faultkey-mcp setup) — anonymous, opt-in
+    if (url.pathname === "/v1/install-ping" && request.method === "POST") {
+      const res = await handleInstallPing(request, env, ctx);
+      if (res) return res;
+    }
+
+    // Waitlist lead capture from the landing page
+    if (url.pathname === "/v1/leads" && request.method === "POST") {
+      const res = await handleLeadCapture(request, env, ctx);
+      if (res) return res;
+    }
+
+    // Admin dashboard (D1-backed aggregates). Gated by ADMIN_TOKEN or CF Access.
+    if (url.pathname.startsWith("/admin/dashboard")) {
+      const res = await handleAdminDashboard(url, request, env);
+      if (res) return res;
+    }
     // ─── MCP registry auto-discovery descriptors ─────────────────────────────
     // /.well-known/mcp.json   (canonical MCP service descriptor)
     // /.well-known/glama.json (glama.ai registry crawler reads this path)
@@ -1624,8 +1723,61 @@ export default {
         });
       }
 
+      // ── Persistence hook ───────────────────────────────────────────────
+      // Clone the response body so we can both return it AND inspect it
+      // asynchronously to persist any certificate it contains. Tracking failures
+      // never block or modify the primary response.
+      let mcpResForReturn = mcpRes;
+      if (mcpRes.status === 200 && env.FAULTKEY_DB) {
+        try {
+          const cloned = mcpRes.clone();
+          mcpResForReturn = mcpRes;
+          ctx.waitUntil(
+            (async () => {
+              try {
+                const bodyText = await cloned.text();
+                const cert = extractCertFromMcpResponse(bodyText);
+                if (cert && cert.certificateId) {
+                  const row: CertRow = {
+                    certificate_id: String(cert.certificateId),
+                    request_hash: String(cert._demo_request_hash ?? cert.request_hash ?? ""),
+                    scenario_id: String(
+                      cert.incident?.category ??
+                        cert.incident?.title ??
+                        "unknown"
+                    ),
+                    scenario_severity: cert.incident?.severity
+                      ? String(cert.incident.severity)
+                      : undefined,
+                    jurisdiction: cert.incident?.jurisdiction
+                      ? String(cert.incident.jurisdiction)
+                      : undefined,
+                    total_cents: cert.damages?.totalCents
+                      ? Number(cert.damages.totalCents)
+                      : undefined,
+                    primary_share: cert.verdict?.primaryShare
+                      ? Number(cert.verdict.primaryShare)
+                      : undefined,
+                    merkle_root: cert.anchor?.merkleRoot
+                      ? String(cert.anchor.merkleRoot)
+                      : undefined,
+                    full_cert_json: cert,
+                    latency_ms: Date.now() - t0,
+                  };
+                  await persistCertificate(env, request, row);
+                }
+              } catch (err) {
+                console.error("[tracking] mcp response persistence failed:", err);
+              }
+            })()
+          );
+        } catch (err) {
+          console.error("[tracking] mcp clone failed:", err);
+        }
+      }
+
       // Re-emit with CORS headers so browsers can call /mcp directly.
-      const newHeaders = new Headers(mcpRes.headers);
+      const newHeaders = new Headers(mcpResForReturn.headers);
       newHeaders.set("access-control-allow-origin", "*");
       newHeaders.set("access-control-allow-methods", "GET, POST, OPTIONS");
       newHeaders.set("access-control-allow-headers", "content-type, authorization, mcp-session-id, accept, traceparent, tracestate");
@@ -1654,9 +1806,9 @@ export default {
         newHeaders.set("traceparent", `00-${hex(traceIdBytes)}-${hex(spanIdBytes)}-01`);
       }
 
-      return new Response(mcpRes.body, {
-        status: mcpRes.status,
-        statusText: mcpRes.statusText,
+      return new Response(mcpResForReturn.body, {
+        status: mcpResForReturn.status,
+        statusText: mcpResForReturn.statusText,
         headers: newHeaders,
       });
     }
