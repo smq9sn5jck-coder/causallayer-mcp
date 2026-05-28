@@ -56,6 +56,7 @@ import {
   type RequestMeta,
 } from "./demo.js";
 import { standaloneResponse } from "./standalone.js";
+import { handleLeads } from "./leads.js";
 import { convertOtlpToIncident, type OtlpJson } from "./otel-ingest.js";
 import {
   runWeeklyDeterminism,
@@ -91,6 +92,17 @@ export interface Env extends BillingEnv {
   WEEKLY_PROOFS?: KVNamespace;
   ANCHOR_PRIVATE_KEY?: string; // base64 raw 32-byte Ed25519 seed (production only)
   ADMIN_TOKEN?: string; // gates POST /api/v2/proofs/run-now
+
+  // ─ Lead capture (POST /v1/leads) ──────────────────────────────────────
+  // Backs the first-party lead form on faultkey.com. All optional — when
+  // LEADS_DB is unbound the endpoint returns 503 and the client falls back
+  // to Formspree without retrying. See src/leads.ts +
+  // migrations/0001_create_leads.sql for the schema.
+  LEADS_DB?: D1Database;
+  LEADS_RL?: KVNamespace;
+  TURNSTILE_SECRET?: string;
+  TURNSTILE_REQUIRED?: string;
+  LEADS_DAILY_SALT_KEY?: string;
 }
 
 function parseUsd(v: string | undefined, fallback: number): number {
@@ -1355,6 +1367,28 @@ export default {
         resources: [],
         prompts: [],
       });
+    }
+
+    // ─── First-party lead capture (POST /v1/leads) ───────────────────────
+    // Backs the EmailCapture + StickyCtaBar forms on faultkey.com. Reads
+    // its own bindings (LEADS_DB, LEADS_RL, TURNSTILE_SECRET) and never
+    // throws — the client falls back to Formspree on any non-2xx so this
+    // route is safe to deploy ahead of binding configuration.
+    if (url.pathname === "/v1/leads") {
+      const res = await handleLeads(request, env, ctx, t0);
+      await logEvent(
+        res.status >= 400 ? "api_error" : "api_request",
+        request,
+        env,
+        ctx,
+        {
+          request_path: url.pathname,
+          method: request.method,
+          response_status: res.status,
+          duration_ms: Date.now() - t0,
+        },
+      );
+      return res;
     }
 
     // Liveness probe + directory listing
