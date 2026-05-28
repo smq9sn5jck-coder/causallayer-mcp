@@ -56,6 +56,7 @@ import {
   type RequestMeta,
 } from "./demo.js";
 import { standaloneResponse } from "./standalone.js";
+import { handleLeads, handleLeadsList } from "./leads.js";
 import { convertOtlpToIncident, type OtlpJson } from "./otel-ingest.js";
 import {
   runWeeklyDeterminism,
@@ -91,6 +92,14 @@ export interface Env extends BillingEnv {
   WEEKLY_PROOFS?: KVNamespace;
   ANCHOR_PRIVATE_KEY?: string; // base64 raw 32-byte Ed25519 seed (production only)
   ADMIN_TOKEN?: string; // gates POST /api/v2/proofs/run-now
+
+  // /v1/leads first-party lead capture (KV-backed)
+  LEADS_KV?: KVNamespace;
+  LEADS_RL?: KVNamespace;             // optional, falls back to LEADS_KV
+  LEADS_ADMIN_TOKEN?: string;         // gates GET /v1/leads listing
+  TURNSTILE_SECRET?: string;          // optional bot-protection
+  TURNSTILE_REQUIRED?: string;        // "true" to enforce
+  LEADS_DAILY_SALT_KEY?: string;      // optional pepper override
 }
 
 function parseUsd(v: string | undefined, fallback: number): number {
@@ -1355,6 +1364,17 @@ export default {
         resources: [],
         prompts: [],
       });
+    }
+
+    // First-party lead capture (replaces Formspree fallback)
+    //   POST /v1/leads  → public submission, KV-backed
+    //   GET  /v1/leads  → admin list, X-Admin-Token required
+    //   OPTIONS /v1/leads → CORS preflight
+    if (url.pathname === "/v1/leads") {
+      if (request.method === "GET") {
+        return handleLeadsList(request, env);
+      }
+      return handleLeads(request, env, ctx, t0);
     }
 
     // Liveness probe + directory listing
