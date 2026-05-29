@@ -144,6 +144,10 @@ The CausalLayer engine itself (the closed-form fault math) runs upstream and is 
 
 For enterprise tenants email **sales@faultkey.com** (or open a GitHub issue with subject "enterprise inquiry").
 
+## Free AI Liability Risk Assessment
+
+> **Not sure where your AI liability exposure sits?** Take the free [FaultKey AI Liability Risk Assessment](https://form.jotform.com/261486061447056) — 2 minutes, no sales call, instant preliminary risk score. Covers EU AI Act, APRA CPS 230, and NIST AI RMF.
+
 ## License
 
 Apache 2.0. See [LICENSE](./LICENSE).
