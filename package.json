@@ -64,7 +64,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240924.0",
     "@types/node": "^22.7.4",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.0",
     "typescript": "^5.6.3",
     "vitest": "^4.1.7",
     "wrangler": "^4.93.0"
