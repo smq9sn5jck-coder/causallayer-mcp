@@ -73,7 +73,7 @@
     },
     {
       "binding": "WEEKLY_PROOFS",
-      "id": "REPLACE_WITH_WEEKLY_PROOFS_KV_ID"
+      "id": "dc7d2daef1af447e8ad0d9d877a8dfca"
     }
   ],
 
@@ -125,7 +125,7 @@
         },
         {
           "binding": "WEEKLY_PROOFS",
-          "id": "REPLACE_WITH_WEEKLY_PROOFS_KV_ID"
+          "id": "dc7d2daef1af447e8ad0d9d877a8dfca"
         }
       ],
       "vars": {
