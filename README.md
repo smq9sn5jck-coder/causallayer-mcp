@@ -20,7 +20,9 @@
 
 > **Deterministic fault math for multi-party AI incidents.** When an AI causes harm and three parties argue over who pays, FaultKey returns a signed, Bitcoin-anchored certificate of fault allocation in under 200 ms — no LLM, no probabilistic scoring, no vendor cooperation needed for a third party to verify.
 
-This is the official [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for the [CausalLayer](https://github.com/smq9sn5jck-coder/causallayer) engine, packaged as a Cloudflare Worker. It lets AI agents (Claude Desktop, Cursor, Cline, Continue, Windsurf) call the four core liability-attribution tools without writing a single line of integration code.
+This is the official [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for the CausalLayer engine, packaged as a Cloudflare Worker. It lets AI agents (Claude Desktop, Cursor, Cline, Continue, Windsurf) call the four core liability-attribution tools without writing a single line of integration code.
+
+> **If this saves you time, [give it a star](https://github.com/smq9sn5jck-coder/causallayer-mcp/stargazers)** — it helps others find it and tells us people care.
 
 ## Live demo
 
@@ -151,6 +153,15 @@ For enterprise tenants email **sales@faultkey.com** (or open a GitHub issue with
 ## License
 
 Apache 2.0. See [LICENSE](./LICENSE).
+
+## Support the Project
+
+If FaultKey helped you understand AI liability, saved you research time, or you just think deterministic fault attribution should exist:
+
+- **Star this repo** — [github.com/smq9sn5jck-coder/causallayer-mcp](https://github.com/smq9sn5jck-coder/causallayer-mcp/stargazers)
+- **Share it** — post on LinkedIn, X, or your team Slack
+- **Try the demo** — [Interactive Demo](https://faultkey-try-demo.zykm9qkk7j.workers.dev/try)
+- **Take the free assessment** — [AI Liability Risk Assessment](https://form.jotform.com/261486061447056)
 
 ## Built in Brisbane
 
