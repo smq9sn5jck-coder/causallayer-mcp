@@ -198,6 +198,12 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
     _demo_disclaimer: DISCLAIMER,
     _demo_request_hash: shortHash,
     _demo_generated_at: new Date().toISOString(),
+    _next_steps: {
+      production_access: "https://faultkey.com/#waitlist",
+      github: "https://github.com/smq9sn5jck-coder/causallayer-mcp",
+      docs: "https://faultkey.com/docs",
+      message: "Like what you see? Star the repo and join the waitlist for production access with real Bitcoin anchoring.",
+    },
   };
 
   // ── /api/v1/incidents/analyze ──────────────────────────────────────────

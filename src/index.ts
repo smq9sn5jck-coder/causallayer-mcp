@@ -344,7 +344,7 @@ async function withBilling<T>(
 export class CausalLayerMCP extends McpAgent<Env, unknown, SessionProps> {
   server = new McpServer({
     name: "causallayer-mcp",
-    version: "0.3.1",
+    version: "0.4.0",
   });
 
   async init() {
@@ -1285,7 +1285,7 @@ export default {
       });
     }
         // ─── Interactive demo page ───────────────────────────────────────────────
-    if (url.pathname === "/try" && request.method === "GET") {
+    if ((url.pathname === "/try" || url.pathname === "/demo") && request.method === "GET") {
       const { serveTryPage } = await import("./try-page.js");
       return serveTryPage(request, env);
     }
@@ -1378,7 +1378,7 @@ export default {
     }
 
     // Liveness probe + directory listing
-    if (url.pathname === "/healthz" || url.pathname === "/") {
+    if (url.pathname === "/healthz" || url.pathname === "/health" || url.pathname === "/") {
       // Event: app_opened — anyone hits the landing/health endpoint.
       await logEvent("app_opened", request, env, ctx, {
         request_path: url.pathname,
@@ -1388,7 +1388,7 @@ export default {
       });
       return json({
         name: "causallayer-mcp",
-        version: "0.3.1",
+        version: "0.4.0",
         env: env.CAUSALLAYER_ENV,
         billing_mode: env.BILLING_MODE,
         api_base: env.CAUSALLAYER_API_BASE,
