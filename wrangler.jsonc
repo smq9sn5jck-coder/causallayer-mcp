@@ -25,7 +25,7 @@
  */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "causallayer-mcp",
+  "name": "causallayer-mcp-demo",
   "main": "src/index.ts",
   "compatibility_date": "2026-01-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -56,12 +56,24 @@
   },
   "observability": { "enabled": true },
 
+  // FK-METHOD-2026-005 weekly determinism cron. Mondays 12:00 UTC.
+  // The scheduled() handler re-runs the canonical demo scenario suite,
+  // recomputes each, verifies certificate hashes match, and writes one
+  // signed JSONL line to the WEEKLY_PROOFS KV. The proof log is then
+  // exposed publicly via GET /api/v2/proofs/weekly.
+  "triggers": { "crons": ["0 12 * * 1"] },
+
   // KV namespace for the credit ledger. Replace the id values after running
   // `wrangler kv:namespace create LEDGER` (and the --env <name> variants).
+  // WEEKLY_PROOFS holds the FK-METHOD-2026-005 weekly proof log.
   "kv_namespaces": [
     {
       "binding": "LEDGER",
       "id": "e2323ffd683b4242a835e26a8f01d693"
+    },
+    {
+      "binding": "WEEKLY_PROOFS",
+      "id": "dc7d2daef1af447e8ad0d9d877a8dfca"
     }
   ],
 
@@ -78,7 +90,15 @@
     "PRICE_SUBMIT_INCIDENT": "50",
     "PRICE_VERIFY_CERTIFICATE": "1",
     "PRICE_GET_ANCHOR_STATUS": "0",
-    "PRICE_QUERY_ISSUER_REGISTRY": "0"
+    "PRICE_QUERY_ISSUER_REGISTRY": "0",
+    // Demo rate-limit overrides (mirrored into env.demo.vars below).
+    // Defaults in src/demo.ts are 5/50/1000 — too tight for a public demo where
+    // visitors hit the cap on their second submit. Bumping to 50/200/5000 so a
+    // real evaluator can run a handful of scenarios without seeing the
+    // DEMO_RATE_LIMITED card. Tune via env vars without code changes.
+    "DEMO_DAILY_PER_IP_SUBMIT": "50",
+    "DEMO_DAILY_PER_IP_VERIFY": "200",
+    "DEMO_DAILY_GLOBAL_SUBMIT": "5000"
   },
 
   "env": {
@@ -97,10 +117,15 @@
         ]
       },
       "observability": { "enabled": true },
+      "triggers": { "crons": ["0 12 * * 1"] },
       "kv_namespaces": [
         {
           "binding": "LEDGER",
           "id": "756cd4a6850a4e9e80837ae764d15ef7"
+        },
+        {
+          "binding": "WEEKLY_PROOFS",
+          "id": "dc7d2daef1af447e8ad0d9d877a8dfca"
         }
       ],
       "vars": {
@@ -114,7 +139,13 @@
         "PRICE_SUBMIT_INCIDENT": "50",
         "PRICE_VERIFY_CERTIFICATE": "1",
         "PRICE_GET_ANCHOR_STATUS": "0",
-        "PRICE_QUERY_ISSUER_REGISTRY": "0"
+        "PRICE_QUERY_ISSUER_REGISTRY": "0",
+        // Demo rate-limit overrides. Bumped from defaults (5/50/1000) to give
+        // real visitors of faultkey.com/try room to evaluate the engine without
+        // hitting the daily cap on the first or second try. See src/demo.ts.
+        "DEMO_DAILY_PER_IP_SUBMIT": "50",
+        "DEMO_DAILY_PER_IP_VERIFY": "200",
+        "DEMO_DAILY_GLOBAL_SUBMIT": "5000"
       }
     },
     "sandbox": {

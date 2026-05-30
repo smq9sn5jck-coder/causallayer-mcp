@@ -7,7 +7,7 @@
 [![npm version](https://img.shields.io/npm/v/causallayer-mcp.svg)](https://www.npmjs.com/package/causallayer-mcp)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
 [![Model Context Protocol](https://img.shields.io/badge/MCP-Ready-green)](https://modelcontextprotocol.io/)
-[![Live Demo](https://img.shields.io/badge/demo-live-success)](https://mcp.faultkey.com/healthz)
+[![Live Demo](https://img.shields.io/badge/demo-live-success)](https://mcp.faultkey.com/try)
 [![GitHub Stars](https://img.shields.io/github/stars/smq9sn5jck-coder/causallayer-mcp?style=flat&logo=github)](https://github.com/smq9sn5jck-coder/causallayer-mcp/stargazers)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![OpenAPI](https://img.shields.io/badge/OpenAPI-3.1-85ea2d?logo=openapiinitiative&logoColor=white)](./openapi.yaml)
@@ -20,15 +20,19 @@
 
 > **Deterministic fault math for multi-party AI incidents.** When an AI causes harm and three parties argue over who pays, FaultKey returns a signed, Bitcoin-anchored certificate of fault allocation in under 200 ms — no LLM, no probabilistic scoring, no vendor cooperation needed for a third party to verify.
 
-This is the official [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for the [CausalLayer](https://github.com/smq9sn5jck-coder/causallayer) engine, packaged as a Cloudflare Worker. It lets AI agents (Claude Desktop, Cursor, Cline, Continue, Windsurf) call the four core liability-attribution tools without writing a single line of integration code.
+This is the official [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for the CausalLayer engine, packaged as a Cloudflare Worker. It lets AI agents (Claude Desktop, Cursor, Cline, Continue, Windsurf) call the four core liability-attribution tools without writing a single line of integration code.
+
+> **If this saves you time, [give it a star](https://github.com/smq9sn5jck-coder/causallayer-mcp/stargazers)** — it helps others find it and tells us people care.
 
 ## Live demo
+
+> **🎮 [Try the Interactive Demo](https://mcp.faultkey.com/try)** — No setup required. Pick a scenario, click "Run Analysis", see real-time liability attribution.
 
 The public Worker is deployed on Cloudflare's global edge network and is fully functional in standalone demo mode (deterministic responses, watermarked, rate-limited 5 calls / IP / day):
 
 - **Endpoint:** `https://mcp.faultkey.com/mcp` (live, custom domain) 
 - **Mirror:** `https://causallayer-mcp-demo.zykm9qkk7j.workers.dev/mcp`
-- **Healthcheck:** [`/healthz`](https://mcp.faultkey.com/healthz)
+- **Healthcheck:** [`/healthz`](https://mcp.faultkey.com/try)
 - **Demand telemetry:** [`/stats`](https://mcp.faultkey.com/stats) (public, aggregated, no PII)
 
 ## Quick start
@@ -142,9 +146,22 @@ The CausalLayer engine itself (the closed-form fault math) runs upstream and is 
 
 For enterprise tenants email **sales@faultkey.com** (or open a GitHub issue with subject "enterprise inquiry").
 
+## Free AI Liability Risk Assessment
+
+> **Not sure where your AI liability exposure sits?** Take the free [FaultKey AI Liability Risk Assessment](https://form.jotform.com/261486061447056) — 2 minutes, no sales call, instant preliminary risk score. Covers EU AI Act, APRA CPS 230, and NIST AI RMF.
+
 ## License
 
 Apache 2.0. See [LICENSE](./LICENSE).
+
+## Support the Project
+
+If FaultKey helped you understand AI liability, saved you research time, or you just think deterministic fault attribution should exist:
+
+- **Star this repo** — [github.com/smq9sn5jck-coder/causallayer-mcp](https://github.com/smq9sn5jck-coder/causallayer-mcp/stargazers)
+- **Share it** — post on LinkedIn, X, or your team Slack
+- **Try the demo** — [Interactive Demo](https://mcp.faultkey.com/try)
+- **Take the free assessment** — [AI Liability Risk Assessment](https://form.jotform.com/261486061447056)
 
 ## Built in Brisbane
 

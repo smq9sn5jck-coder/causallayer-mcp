@@ -55,8 +55,24 @@ const PAID_TOOLS: ReadonlySet<ToolName> = new Set([
 const DEFAULT_DAILY_PER_IP = 5;          // submit_incident calls / IP / day
 const DEFAULT_DAILY_GLOBAL = 1000;       // total submit_incident calls / day
 const DEFAULT_VERIFY_PER_IP = 50;        // verify_certificate calls / IP / day
-const BURST_WINDOW_SECONDS = 5;          // 1 call / 5s / (IP, tool)
+const DEFAULT_BURST_WINDOW_SECONDS = 5;  // 1 call / 5s / (IP, tool)
 const TELEMETRY_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
+
+/** Parse a positive integer env var with a default fallback. */
+function envInt(raw: string | undefined, fallback: number): number {
+  if (!raw) return fallback;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+export function demoLimits(env: BillingEnv) {
+  return {
+    dailyPerIpSubmit: envInt(env.DEMO_DAILY_PER_IP_SUBMIT, DEFAULT_DAILY_PER_IP),
+    dailyPerIpVerify: envInt(env.DEMO_DAILY_PER_IP_VERIFY, DEFAULT_VERIFY_PER_IP),
+    dailyGlobalSubmit: envInt(env.DEMO_DAILY_GLOBAL_SUBMIT, DEFAULT_DAILY_GLOBAL),
+    burstWindowSeconds: envInt(env.DEMO_BURST_WINDOW_SECONDS, DEFAULT_BURST_WINDOW_SECONDS),
+  };
+}
 
 // ─── KV key helpers ────────────────────────────────────────────────────
 
@@ -127,9 +143,10 @@ export async function enforceDemoLimit(
 
   const ip = meta.ip_bucket;
   const day = isoDay();
+  const limits = demoLimits(env);
 
   // (1) Burst limit per (IP, tool). KV minimum TTL is 60s, but our burst
-  // window is 5s — so we store the timestamp inside the value and check
+  // window is short — so we store the timestamp inside the value and check
   // elapsed time on read. KV record self-expires after 60s.
   const burstKey = `demo:burst:${ip}:${tool}`;
   const burstRaw = await env.LEDGER.get(burstKey);
@@ -137,12 +154,12 @@ export async function enforceDemoLimit(
     const lastTs = Number.parseInt(burstRaw, 10);
     if (
       Number.isFinite(lastTs) &&
-      Date.now() - lastTs < BURST_WINDOW_SECONDS * 1000
+      Date.now() - lastTs < limits.burstWindowSeconds * 1000
     ) {
       return {
         allow: false,
         reason: "burst",
-        retry_after_seconds: BURST_WINDOW_SECONDS,
+        retry_after_seconds: limits.burstWindowSeconds,
       };
     }
   }
@@ -150,7 +167,7 @@ export async function enforceDemoLimit(
   // (2) Daily per-IP for paid tools
   if (PAID_TOOLS.has(tool)) {
     const perIpLimit =
-      tool === "submit_incident" ? DEFAULT_DAILY_PER_IP : DEFAULT_VERIFY_PER_IP;
+      tool === "submit_incident" ? limits.dailyPerIpSubmit : limits.dailyPerIpVerify;
     const perIpKey = `demo:ip:${day}:${ip}:${tool}`;
     const used = Number.parseInt((await env.LEDGER.get(perIpKey)) || "0", 10);
     if (used >= perIpLimit) {
@@ -169,7 +186,7 @@ export async function enforceDemoLimit(
       (await env.LEDGER.get(globalKey)) || "0",
       10
     );
-    if (usedGlobal >= DEFAULT_DAILY_GLOBAL) {
+    if (usedGlobal >= limits.dailyGlobalSubmit) {
       return { allow: false, reason: "daily_global", remaining: 0 };
     }
   }

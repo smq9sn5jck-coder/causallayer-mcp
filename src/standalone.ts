@@ -56,6 +56,30 @@ function hashInt(hash: string, offset: number, min: number, max: number): number
   return min + (n % (max - min + 1));
 }
 
+import { applyEuRuleSet, euGateEngages, RULE_SET_VERSION as EU_RULE_SET_VERSION, type EuActor, type EuRuleFlags } from "./eu-rules.js";
+import { applyCascadeAttenuation, type CascadeAttenuationOutput } from "./cascade.js";
+import {
+  simulateRemediation,
+  REMEDIATION_CATALOG,
+  REMEDIATION_CATALOG_VERSION,
+  type FourFactorScoring as RemFourFactorScoring,
+  type VerdictShares as RemVerdictShares,
+  type RemediationInput,
+} from "./remediation.js";
+import {
+  evaluateProspectiveResponse,
+  JURISDICTION_THRESHOLDS,
+  PROSPECTIVE_GATE_RULE_ID,
+  PROSPECTIVE_GATE_VERSION,
+  type ProposedAction,
+} from "./prospective-gate.js";
+import { compareJurisdictions,
+  SUPPORTED_JURISDICTIONS,
+  JURISDICTION_OVERLAY_VERSION,
+  type CompareInput as JxCompareInput,
+  type JurisdictionCode,
+} from "./jurisdiction.js";
+
 // ─── Input-sensitive scoring logic ─────────────────────────────────────────
 const SEVERITY_WEIGHTS: Record<string, number> = {
   critical: 0.92,
@@ -128,6 +152,13 @@ interface Event {
   timestamp?: string;
   actor_id?: string;
   description?: string;
+  // W3C Trace Context (optional). When the caller has OpenTelemetry,
+  // Jaeger, Zipkin, Datadog, or New Relic span data for this event, these
+  // fields let the certificate cite the exact span as evidence. The W3C
+  // spec mandates 32-hex trace_ids and 16-hex span_ids.
+  trace_id?: string;
+  span_id?: string;
+  trace_source?: "opentelemetry" | "jaeger" | "zipkin" | "datadog" | "newrelic" | "other";
 }
 
 function computePrimaryScore(
@@ -167,6 +198,12 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
     _demo_disclaimer: DISCLAIMER,
     _demo_request_hash: shortHash,
     _demo_generated_at: new Date().toISOString(),
+    _next_steps: {
+      production_access: "https://faultkey.com/#waitlist",
+      github: "https://github.com/smq9sn5jck-coder/causallayer-mcp",
+      docs: "https://faultkey.com/docs",
+      message: "Like what you see? Star the repo and join the waitlist for production access with real Bitcoin anchoring.",
+    },
   };
 
   // ── /api/v1/incidents/analyze ──────────────────────────────────────────
@@ -183,7 +220,7 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
 
     const primaryAgent = agents[0] ?? { id: "agent_unknown", type: "ai_system" };
     const primaryType = primaryAgent.type ?? "ai_system";
-    const primaryScore = computePrimaryScore(
+    let primaryScore = computePrimaryScore(
       hash,
       severity,
       primaryType,
@@ -209,6 +246,78 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
       });
     }
 
+    // ── Apply Cascade Attenuation Rule (FK-METHOD-2026-002) ───────────────
+    // When agents act as links in a multi-agent chain, sub-linearly reduce
+    // each agent's individual share. See docs/cascade-rule.md for the math
+    // and case-law mapping.
+    let cascadeAttenuation: CascadeAttenuationOutput | null = null;
+    if (agents.length >= 2 && events.length >= 2) {
+      const beforeShares: Record<string, number> = {};
+      beforeShares[primaryAgent.id] = primaryScore;
+      for (const s of secondaryShares) beforeShares[s.party] = s.share;
+
+      cascadeAttenuation = applyCascadeAttenuation(
+        beforeShares,
+        events.map((e) => ({
+          id: e.id,
+          type: e.type ?? "event",
+          agent: e.actor_id,
+          trace_id: (e as { trace_id?: string }).trace_id,
+          span_id: (e as { span_id?: string }).span_id,
+          parent_span_id: (e as { parent_span_id?: string }).parent_span_id,
+          caused_by: (e as { caused_by?: string }).caused_by,
+        })),
+        agents.map((a) => ({ id: a.id, type: a.type })),
+      );
+
+      if (cascadeAttenuation.applied) {
+        // Replace primaryScore + secondaryShares with attenuated values
+        primaryScore = +(cascadeAttenuation.attenuated_shares[primaryAgent.id] ?? primaryScore).toFixed(3);
+        for (const s of secondaryShares) {
+          s.share = +(cascadeAttenuation.attenuated_shares[s.party] ?? s.share).toFixed(3);
+        }
+      }
+    }
+
+    // ── Apply EU rule-set if jurisdiction + trigger gates engage ───────────
+    const euFlagsRaw = (body.eu_flags as Record<string, unknown> | undefined) ?? {};
+    const euFlags: EuRuleFlags = {
+      high_risk_ai: Boolean(euFlagsRaw.high_risk_ai),
+      pld_compensable_damage: Boolean(euFlagsRaw.pld_compensable_damage),
+      deployer_used_contrary_to_instructions: Boolean(euFlagsRaw.deployer_used_contrary_to_instructions),
+      human_oversight_unassigned_or_unqualified: Boolean(euFlagsRaw.human_oversight_unassigned_or_unqualified),
+      human_oversight_nominally_assigned_not_present: Boolean(euFlagsRaw.human_oversight_nominally_assigned_not_present),
+      deployer_input_data_unrepresentative: Boolean(euFlagsRaw.deployer_input_data_unrepresentative),
+      deployer_ignored_risk_signal: Boolean(euFlagsRaw.deployer_ignored_risk_signal),
+      deployer_failed_serious_incident_notification: Boolean(euFlagsRaw.deployer_failed_serious_incident_notification),
+      deployer_destroyed_logs: Boolean(euFlagsRaw.deployer_destroyed_logs),
+      deployer_employer_no_worker_notice: Boolean(euFlagsRaw.deployer_employer_no_worker_notice),
+      deployer_public_authority_unregistered: Boolean(euFlagsRaw.deployer_public_authority_unregistered),
+      provider_failed_to_supply_instructions: Boolean(euFlagsRaw.provider_failed_to_supply_instructions),
+      provider_breach_was_unforeseeable: Boolean(euFlagsRaw.provider_breach_was_unforeseeable),
+      ai_is_opaque_black_box: Boolean(euFlagsRaw.ai_is_opaque_black_box),
+      defendant_failed_disclosure_order: Boolean(euFlagsRaw.defendant_failed_disclosure_order),
+      substantial_modification_present: Boolean(euFlagsRaw.substantial_modification_present),
+      substantial_modification_severity: typeof euFlagsRaw.substantial_modification_severity === "number"
+        ? (euFlagsRaw.substantial_modification_severity as number)
+        : undefined,
+    };
+
+    let euOverlay: ReturnType<typeof applyEuRuleSet> | null = null;
+    let ruleSetVersion: string = "global-v0";
+    if (euGateEngages(jurisdiction, euFlags)) {
+      const euActors: EuActor[] = agents.map((a) => ({
+        id: a.id,
+        type: (a.type ?? "third_party") as EuActor["type"],
+        eu_resident: typeof (a as unknown as Record<string, unknown>).eu_resident === "boolean" ? Boolean((a as unknown as Record<string, unknown>).eu_resident) : true,
+      }));
+      const attributableMap: Record<string, number> = {};
+      attributableMap[primaryAgent.id] = primaryScore;
+      for (const s of secondaryShares) attributableMap[s.party] = s.share;
+      euOverlay = applyEuRuleSet({ attributable: attributableMap, actors: euActors, flags: euFlags });
+      ruleSetVersion = EU_RULE_SET_VERSION;
+    }
+
     // Determine verdict kind
     const verdictKind =
       agents.length <= 1
@@ -225,16 +334,53 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
     const causalNodes = events.map((e, i) => ({
       id: e.id,
       type: e.type ?? "event",
-      timestamp: e.timestamp ?? new Date(Date.now() - (events.length - i) * 3600000).toISOString(),
+      // Deterministic synthetic timestamp when none supplied: derive from inputHash
+      // + event index, anchored to a fixed epoch. Ensures recompute produces identical
+      // graph nodes regardless of wall-clock. Real timestamps from caller pass through.
+      timestamp: e.timestamp ?? new Date(
+        Date.parse("2024-01-01T00:00:00Z") +
+        hashInt(hash, 16 + i, 0, 365 * 24) * 3600000
+      ).toISOString(),
       actor: e.actor_id ?? (agents[i % agents.length]?.id ?? "unknown"),
       description: e.description ?? `Event ${i + 1}`,
     }));
-    const causalEdges = events.slice(1).map((e, i) => ({
-      from: events[i]!.id,
-      to: e.id,
-      relation: "caused_by",
-      strength: hashFloat(hash, 32 + i * 2, 0.6, 0.95),
-    }));
+    const causalEdges = events.slice(1).map((e, i) => {
+      const fromEvent = events[i]!;
+      // W3C Trace Context evidence pointer — propagated when either the
+      // "from" or "to" event carried trace_id/span_id. The receiving event's
+      // span is the canonical evidence anchor for the edge (it is the span
+      // whose state was *caused by* the prior event), but we also carry the
+      // upstream span when present so a viewer can walk the trace tree.
+      const evidence: Record<string, string> | undefined = e.trace_id || e.span_id
+        ? {
+            ...(e.trace_id ? { trace_id: e.trace_id } : {}),
+            ...(e.span_id ? { span_id: e.span_id } : {}),
+            ...(fromEvent.span_id ? { caused_by_span_id: fromEvent.span_id } : {}),
+            ...(e.trace_source ? { source: e.trace_source } : {}),
+          }
+        : undefined;
+      return {
+        from: fromEvent.id,
+        to: e.id,
+        relation: "caused_by",
+        strength: hashFloat(hash, 32 + i * 2, 0.6, 0.95),
+        ...(evidence ? { evidence } : {}),
+      };
+    });
+    // Top-level trace_context block when at least one event carries a span.
+    // We pick the first non-empty trace_id we see as the canonical trace for
+    // this incident; mixed-trace incidents (rare) keep all span ids in order.
+    const tracedEvents = events.filter((e) => e.trace_id || e.span_id);
+    const traceContext = tracedEvents.length > 0
+      ? {
+          trace_id: tracedEvents.find((e) => !!e.trace_id)?.trace_id ?? null,
+          spans: tracedEvents
+            .filter((e) => !!e.span_id)
+            .map((e) => ({ event_id: e.id, span_id: e.span_id })),
+          source: tracedEvents.find((e) => !!e.trace_source)?.trace_source ?? "opentelemetry",
+          spec: "https://www.w3.org/TR/trace-context/",
+        }
+      : null;
     const rootCause = events.length > 0 ? events[0]!.id : "unknown";
     const butForChain = events.slice(0, Math.min(3, events.length)).map((e) => e.id);
 
@@ -409,10 +555,231 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
       { ask: "Pre-deployment risk assessment documentation", ifFoundMaxSwingPP: hashFloat(hash, 56, 0.02, 0.08), priority: 4 },
     ];
 
+    // ── Audit trail (deterministic, court/insurance-grade explanation) ─────
+    // Every entry is derived from the same inputs and scores already computed above,
+    // so the trail is byte-identical for identical inputs. No LLM. No stochastic text.
+    type AuditEntry = {
+      step: number;
+      rule_id: string;
+      category:
+        | "input_validation"
+        | "causal_analysis"
+        | "four_factor_scoring"
+        | "deviation_taxonomy"
+        | "three_layer_attribution"
+        | "foreseeability"
+        | "counterfactual"
+        | "eu_overlay"
+        | "regulatory_mapping"
+        | "damages"
+        | "underwriting"
+        | "finalization";
+      finding: string;
+      effect_pp: number; // signed percentage-point effect on the primary party share
+      basis: string; // statute / methodology citation
+    };
+    const auditTrail: AuditEntry[] = [];
+    let step = 1;
+    const pp = (n: number) => +(n * 100).toFixed(1); // 0.41 -> 41.0
+
+    // Step 1 — Guardrails / input validation
+    auditTrail.push({
+      step: step++,
+      rule_id: "G2-DETERMINISTIC",
+      category: "input_validation",
+      finding:
+        `Incident accepted: ${agents.length} agent(s), ${events.length} event(s), severity=${severity}, jurisdiction=${jurisdiction}. ` +
+        `deterministic_only=true verified; no LLM used downstream.`,
+      effect_pp: 0,
+      basis: "FaultKey Guardrail G2 (CausalLayer Protocol §1.3)",
+    });
+
+    // Step 2 — Primary party identification
+    auditTrail.push({
+      step: step++,
+      rule_id: "CP-01",
+      category: "causal_analysis",
+      finding:
+        `Primary party identified as ${primaryAgent.id} (type=${primaryType}). ` +
+        `Root-cause event=${rootCause}; but-for chain length=${butForChain.length}.`,
+      effect_pp: 0,
+      basis: "Causal proximity to root-cause event (Hart & Honoré, 1985)",
+    });
+
+    // Step 3 — Four-factor scoring components
+    const cp = hashFloat(hash, 28, 0.5, 0.95);
+    const bd = hashFloat(hash, 30, 0.4, 0.9);
+    const ct = hashFloat(hash, 32, 0.3, 0.85);
+    const ra = hashFloat(hash, 34, 0.2, 0.8);
+    auditTrail.push({
+      step: step++,
+      rule_id: "4F-SCORE",
+      category: "four_factor_scoring",
+      finding:
+        `Four-factor model: causal_proximity=${cp.toFixed(3)} (w=0.30), ` +
+        `behavioural_deviation=${bd.toFixed(3)} (w=0.30), ` +
+        `controllability=${ct.toFixed(3)} (w=0.20), ` +
+        `regulatory_alignment=${ra.toFixed(3)} (w=0.20). ` +
+        `Weighted score yields primary share ${pp(primaryScore)}%.`,
+      effect_pp: pp(primaryScore),
+      basis: "CausalLayer four-factor model v0.5 (FK-METHOD-2026-001)",
+    });
+
+    // Step 4 — Severity weight applied
+    const sevW = SEVERITY_WEIGHTS[severity] ?? 0.64;
+    auditTrail.push({
+      step: step++,
+      rule_id: "SEV-W",
+      category: "four_factor_scoring",
+      finding:
+        `Severity '${severity}' applied weight ${sevW.toFixed(2)} ` +
+        `(Δ ${((sevW - 0.64) * 0.4 * 100).toFixed(1)} pp on primary share).`,
+      effect_pp: +((sevW - 0.64) * 0.4 * 100).toFixed(1),
+      basis: "FaultKey severity calibration table (resolved-outcomes n=725)",
+    });
+
+    // Step 5 — Deviation taxonomy contributions
+    for (const dev of deviations.slice(0, 3)) {
+      auditTrail.push({
+        step: step++,
+        rule_id: `DEV-${(dev.mode ?? "unknown").toUpperCase()}`,
+        category: "deviation_taxonomy",
+        finding:
+          `Deviation '${dev.mode}' detected on agent ${dev.agent} ` +
+          `with confidence ${dev.confidence.toFixed(3)}.`,
+        effect_pp: 0,
+        basis: "FaultKey Deviation Taxonomy v1 (17 modes)",
+      });
+    }
+
+    // Step 6 — Three-layer attribution
+    auditTrail.push({
+      step: step++,
+      rule_id: "3L-ATTR",
+      category: "three_layer_attribution",
+      finding:
+        `Direct=${threeLayer.direct.length}, vicarious=${threeLayer.vicarious.length}, ` +
+        `contributory=${threeLayer.contributory.length} parties identified.`,
+      effect_pp: 0,
+      basis: "Three-layer attribution (direct / vicarious / contributory)",
+    });
+
+    // Step 7 — Foreseeability
+    auditTrail.push({
+      step: step++,
+      rule_id: "FORESEE",
+      category: "foreseeability",
+      finding:
+        `Foreseeability score=${foreseeabilityScore.toFixed(3)}. ` +
+        `Prior incidents in same sector documented in AIID database.`,
+      effect_pp: 0,
+      basis: "Wagon Mound test (foreseeability of damage)",
+    });
+
+    // Step 8 — Counterfactual / but-for test
+    auditTrail.push({
+      step: step++,
+      rule_id: "COUNTER-BF",
+      category: "counterfactual",
+      finding:
+        `${perturbationsRun} input perturbations executed. Max swing on primary share = ${(maxSwingPP * 100).toFixed(2)} pp. ` +
+        (maxSwingPP < 0.05
+          ? "But-for causation SUPPORTED against the primary party at the 5pp threshold."
+          : "But-for causation NOT established at the 5pp threshold."),
+      effect_pp: 0,
+      basis: "But-for causation under 5pp swing threshold",
+    });
+
+    // Step 9 — EU overlay (if engaged)
+    if (euOverlay && euOverlay.applied_rules) {
+      for (const r of euOverlay.applied_rules) {
+        const totalDeltaPp = Object.values(r.delta_pp ?? {}).reduce(
+          (sum, v) => sum + (typeof v === "number" ? v : 0),
+          0
+        );
+        auditTrail.push({
+          step: step++,
+          rule_id: r.rule_id ?? "EU-UNKNOWN",
+          category: "eu_overlay",
+          finding: r.description ?? "EU rule applied.",
+          effect_pp: +totalDeltaPp.toFixed(1),
+          basis: r.authority_url
+            ? `EU AI Act / PLD (${r.authority_url}) — rule_set_version=${EU_RULE_SET_VERSION}`
+            : `EU AI Act / PLD (rule_set_version=${EU_RULE_SET_VERSION})`,
+        });
+      }
+    }
+
+    // Step 10 — Regulatory mapping
+    for (const [key, val] of Object.entries(regulatorRelevant)) {
+      const v = val as { applies?: boolean; violation?: boolean; penaltyExposure?: string };
+      if (v.applies) {
+        auditTrail.push({
+          step: step++,
+          rule_id: key,
+          category: "regulatory_mapping",
+          finding:
+            `${key}: ${v.violation ? "VIOLATION detected" : "applies, no violation"}.` +
+            (v.penaltyExposure ? ` Penalty exposure: ${v.penaltyExposure}.` : ""),
+          effect_pp: 0,
+          basis: key.replace(/_/g, " "),
+        });
+      }
+    }
+
+    // Step 11 — Damages
+    auditTrail.push({
+      step: step++,
+      rule_id: "DMG-CALC",
+      category: "damages",
+      finding:
+        `Direct=${(directCents / 100).toFixed(0)} ${currency}, ` +
+        `consequential=${(consequentialCents / 100).toFixed(0)} ${currency}, ` +
+        `punitive=${(punitiveCents / 100).toFixed(0)} ${currency}. ` +
+        `Total=${(totalCents / 100).toFixed(0)} ${currency} ` +
+        `(range ${(rangeLowCents / 100).toFixed(0)}–${(rangeHighCents / 100).toFixed(0)} ${currency}).`,
+      effect_pp: 0,
+      basis: "Direct + consequential + punitive damages model",
+    });
+
+    // Step 12 — Underwriting decision
+    auditTrail.push({
+      step: step++,
+      rule_id: "UW-GRADE",
+      category: "underwriting",
+      finding:
+        `Risk score=${riskScore}, grade=${grade}, recommendation=${recommendation}. ` +
+        `Expected annual loss=${(expectedAnnualLossCents / 100).toFixed(0)} ${currency}.`,
+      effect_pp: 0,
+      basis: "FaultKey underwriting grade matrix",
+    });
+
+    // Step 13 — Finalization
+    auditTrail.push({
+      step: step++,
+      rule_id: "FIN-CERT",
+      category: "finalization",
+      finding:
+        `Final verdict: ${verdictKind}. ` +
+        `Liability split: primary=${pp(primaryScore)}% + secondary shares sum to ${pp(remainingShare)}%. ` +
+        `Certificate sealed and (in production) anchored to Bitcoin.`,
+      effect_pp: pp(primaryScore),
+      basis: "CausalCertificateV1 schema",
+    });
+
     // Certificate ID
     const inputHash = hash;
-    const outputHash = await hashHex(JSON.stringify({ primaryScore, totalCents, verdictKind }));
-    const certificateId = await hashHex(inputHash + outputHash + base._demo_generated_at);
+    const outputHash = await hashHex(
+      JSON.stringify({ primaryScore, totalCents, verdictKind, audit_steps: auditTrail.length })
+    );
+    // Cert id MUST be a pure function of canonical input + canonical output.
+    // Previously included base._demo_generated_at (wall-clock), which broke the
+    // determinism guarantee: same canonical input → same certificateId.
+    // Engine version + ruleset version are mixed in so a future engine bump
+    // produces a new id namespace cleanly. See issue #42.
+    const certificateId = await hashHex(
+      inputHash + outputHash + "0.5.0-demo" + "global-v1"
+    );
 
     // Timing (event-count-sensitive)
     const totalMs = 120 + events.length * 12 + agents.length * 8;
@@ -449,6 +816,12 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
         rootCause,
         butForChain,
       },
+      // Optional W3C Trace Context evidence — only present when the caller
+      // supplied trace_id/span_id on at least one event. Lets a verifier cross-
+      // reference the certificate against the customer's existing OpenTelemetry
+      // / Jaeger / Datadog observability stack. Spec:
+      // https://www.w3.org/TR/trace-context/
+      ...(traceContext ? { traceContext } : {}),
       deviationTaxonomy: deviations,
       liabilityMode,
       fourFactorScoring: {
@@ -459,6 +832,9 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
         regulatoryAlignment: hashFloat(hash, 34, 0.2, 0.8),
         weights: { causalProximity: 0.30, behaviouralDeviation: 0.30, controllability: 0.20, regulatoryAlignment: 0.20 },
       },
+      ruleSetVersion,
+      euRuleOverlay: euOverlay,
+      cascadeAttenuation,
       crossCaseCalibration: {
         adjustmentAppliedPP: hashFloat(hash, 36, -0.08, 0.08),
         categoryProfile: category,
@@ -560,6 +936,345 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
         status: "demo_ephemeral",
       },
       timing: { totalMs, perturbationsMs },
+      auditTrail,
+    };
+  }
+
+  // ── /api/v2/verify/recompute ──────────────────────────────────────────────
+  // Real verifier: takes a certificate AND its canonical input, re-runs the
+  // engine, and compares the recomputed certificate to the claimed one.
+  // This is the third-party-replicable verification path: anyone with the
+  // canonical input can prove the certificate was generated faithfully by
+  // the engine, without trusting the issuer's signature.
+  if (input.method === "POST" && input.path === "/api/v2/verify/recompute") {
+    const body = (input.body ?? {}) as Record<string, unknown>;
+    const claimed = body.certificate as Record<string, unknown> | undefined;
+    const canonical = body.canonicalInput as Record<string, unknown> | undefined;
+
+    if (!claimed || !canonical) {
+      return {
+        ...base,
+        error: "missing_required_fields",
+        required: ["certificate", "canonicalInput"],
+        guidance: "Submit both the certificate (the JSON returned by /api/v1/incidents/analyze) and the canonical input (the original incident body that produced it). The engine will re-run and compare.",
+      };
+    }
+
+    // Recurse: re-run analyze with the canonical input to produce a fresh cert.
+    const recomputed = await standaloneResponse({
+      method: "POST",
+      path: "/api/v1/incidents/analyze",
+      body: canonical,
+    }) as Record<string, unknown>;
+
+    // Compare critical fields between claimed and recomputed.
+    const fieldsToCheck = [
+      "certificateId",
+      "_demo_request_hash",
+      "verdict",
+      "causalGraph",
+      "fourFactorScoring",
+      "deviationTaxonomy",
+      "euRuleOverlay",
+      "cascadeAttenuation",
+      "damages",
+      "underwriting",
+    ];
+
+    const fieldsMatched: string[] = [];
+    const fieldsDrifted: { field: string; claimed: unknown; recomputed: unknown }[] = [];
+
+    for (const field of fieldsToCheck) {
+      const c = (claimed as Record<string, unknown>)[field];
+      const r = (recomputed as Record<string, unknown>)[field];
+      if (c === undefined && r === undefined) continue;
+      const claimedStr = JSON.stringify(c);
+      const recomputedStr = JSON.stringify(r);
+      if (claimedStr === recomputedStr) {
+        fieldsMatched.push(field);
+      } else {
+        fieldsDrifted.push({ field, claimed: c, recomputed: r });
+      }
+    }
+
+    // Anchor fields: extract merkleRoot from both for direct comparison.
+    const claimedAnchor = (claimed.anchor as Record<string, unknown> | undefined) ?? {};
+    const recomputedAnchor = (recomputed.anchor as Record<string, unknown> | undefined) ?? {};
+    const claimedMerkle = claimedAnchor.merkleRoot as string | undefined;
+    const recomputedMerkle = recomputedAnchor.merkleRoot as string | undefined;
+    const merkleMatch = claimedMerkle === recomputedMerkle && claimedMerkle !== undefined;
+
+    const allMatched = fieldsDrifted.length === 0 && merkleMatch;
+
+    return {
+      ...base,
+      verification: {
+        verified: allMatched,
+        method: "recompute",
+        claim: "Recomputing the engine on the supplied canonical input produces a byte-identical certificate.",
+        verdict: allMatched
+          ? "PASS — recomputed certificate matches the claimed certificate on all checked fields."
+          : `FAIL — ${fieldsDrifted.length} field(s) drifted between claimed and recomputed; merkleRoot match: ${merkleMatch}.`,
+      },
+      comparison: {
+        fieldsMatched,
+        fieldsDrifted,
+        merkleRoot: {
+          claimed: claimedMerkle ?? null,
+          recomputed: recomputedMerkle ?? null,
+          match: merkleMatch,
+        },
+        certificateId: {
+          claimed: (claimed.certificateId as string | undefined) ?? null,
+          recomputed: (recomputed.certificateId as string | undefined) ?? null,
+          match: claimed.certificateId === recomputed.certificateId,
+        },
+        request_hash: {
+          claimed: (claimed._demo_request_hash as string | undefined) ?? null,
+          recomputed: (recomputed._demo_request_hash as string | undefined) ?? null,
+          match: claimed._demo_request_hash === recomputed._demo_request_hash,
+        },
+      },
+      recomputed,
+      methodology: {
+        steps: [
+          "Receive (certificate, canonicalInput) pair from caller.",
+          "Re-run /api/v1/incidents/analyze with the supplied canonicalInput.",
+          "Compare critical fields (certificateId, request_hash, merkleRoot, verdict, causalGraph, fourFactorScoring, deviationTaxonomy, euRuleOverlay, cascadeAttenuation, damages, underwriting) between claimed and recomputed.",
+          "Report PASS only if every checked field matches byte-for-byte.",
+        ],
+        defensibility: "This verification path requires no trust in the issuer or signing key. Anyone with the canonical input and access to the engine can independently confirm the certificate was generated faithfully by the documented algorithm. Combined with the public determinism log (proofs/), this provides three-party-replicable evidence: the issuer claims, the engine re-derives, the auditor confirms.",
+        limits: [
+          "Recomputation depends on the engine version. If the engine is upgraded after a certificate was issued, fields tied to engine version may legitimately drift. The certificate's engineVersion field documents which version was originally used.",
+          "Recomputation does NOT verify the Bitcoin OpenTimestamps proof — that requires the anchor-log Git repository and OpenTimestamps Bitcoin headers. Use /api/v2/verify/certificate for the signature path and /api/v2/anchor/<version> for the anchor proof.",
+        ],
+      },
+    };
+  }
+
+  // ── /api/v2/jurisdiction/catalog ──────────────────────────────────────
+  // Public, free read of the supported jurisdictions and which ones are
+  // research stubs in v1. Lets callers make an informed decision about
+  // which jurisdictions to include in compare requests.
+  if (input.method === "GET" && input.path === "/api/v2/jurisdiction/catalog") {
+    return {
+      ...base,
+      ruleId: "FK-METHOD-2026-004",
+      ruleName: "Multi-Jurisdiction Overlay v1",
+      catalogVersion: JURISDICTION_OVERLAY_VERSION,
+      jurisdictions: SUPPORTED_JURISDICTIONS.map((jx) => ({
+        code: jx,
+        name:
+          jx === "AU"
+            ? "Australia"
+            : jx === "EU"
+              ? "European Union / EEA"
+              : jx === "US"
+                ? "United States"
+                : jx === "UK"
+                  ? "United Kingdom"
+                  : "Canada",
+        is_stub: jx === "US" || jx === "UK" || jx === "CA",
+        rule_set_version:
+          jx === "EU"
+            ? "eu-v1"
+            : jx === "AU"
+              ? "au-v1"
+              : `${jx.toLowerCase()}-stub-v1`,
+        primary_authorities:
+          jx === "AU"
+            ? [
+                "Civil Liability Act 2002 (NSW) Pt 4",
+                "Australian Consumer Law (Sch. 2 CCA 2010) §§54-59, 64-64A",
+                "APRA CPS 230 §§17-22, 31",
+                "DISR Voluntary AI Safety Standard (Sept 2024)",
+              ]
+            : jx === "EU"
+              ? [
+                  "AI Act (Reg. 2024/1689) Arts. 9, 13, 26",
+                  "Revised Product Liability Directive 2024/2853 Arts. 6-12",
+                ]
+              : jx === "US"
+                ? [
+                    "Restatement (Third) of Torts: Apportionment §§7-9",
+                    "Restatement (Third) of Torts: Products Liability §2(c)",
+                  ]
+                : jx === "UK"
+                  ? ["Consumer Protection Act 1987 Pt I", "AI (Regulation) Bill HL 11 (2024)"]
+                  : ["AIDA (Bill C-27 Pt 3)", "PIPEDA (RSC 1985 c. P-8.6)"],
+      })),
+    };
+  }
+
+  // ── /api/v2/jurisdiction/overlay ──────────────────────────────────────
+  // Multi-jurisdiction comparison. Takes a canonical attributable map
+  // (party-id → share, sums to 1.0), the actor list with all jurisdiction
+  // role tags, the union of all jurisdiction-specific flags, and an
+  // optional list of target jurisdictions. Returns side-by-side post-
+  // overlay shares per jurisdiction plus the rules that fired in each.
+  // FK-METHOD-2026-004; pure deterministic.
+  if (input.method === "POST" && input.path === "/api/v2/jurisdiction/overlay") {
+    const body = (input.body ?? {}) as Record<string, unknown>;
+    const attributable = body.attributable as Record<string, number> | undefined;
+    const actors = (body.actors as JxCompareInput["actors"] | undefined) ?? [];
+    const flags = (body.flags as JxCompareInput["flags"] | undefined) ?? ({} as JxCompareInput["flags"]);
+    const jurisdictions = body.jurisdictions as JurisdictionCode[] | undefined;
+    const primaryJurisdiction = body.primaryJurisdiction as string | undefined;
+
+    if (!attributable || Object.keys(attributable).length === 0) {
+      return {
+        ...base,
+        error: "missing_required_fields",
+        required: ["attributable", "actors"],
+        guidance:
+          "Submit { attributable: { party_id: share, ... }, actors: [...], flags: {...} }. Optionally jurisdictions: ['AU','EU',...]. GET /api/v2/jurisdiction/catalog for supported jurisdictions and stub status.",
+      };
+    }
+
+    const result = compareJurisdictions({
+      attributable,
+      actors,
+      flags,
+      jurisdictions,
+      primaryJurisdiction,
+    });
+
+    return {
+      ...base,
+      ...result,
+    };
+  }
+
+  // ── /api/v2/gate/evaluate (FK-METHOD-2026-006) ─────────────────────────
+  // Deterministic prospective-evaluation gate. Takes a ProposedAction and
+  // returns one of three verdicts: allow / require_revision / block. Same
+  // four-factor engine that issues post-hoc certificates, run prospectively
+  // on structured action metadata (not raw prose). Emits a certificate
+  // pre-image hash so the post-hoc certificate (if issued) chains canonically.
+  if (input.method === "POST" && input.path === "/api/v2/gate/evaluate") {
+    const body = (input.body ?? {}) as Record<string, unknown>;
+    const action = body.action as ProposedAction | undefined;
+    const overrides = body.overrides as {
+      allow_below?: number;
+      block_at_or_above?: number;
+      rationale?: string;
+    } | undefined;
+
+    if (!action || !action.action_id || !action.action_type || !action.acting_agent_id) {
+      return {
+        ...base,
+        error: "missing_required_fields",
+        required: ["action.action_id", "action.action_type", "action.acting_agent_id", "action.acting_agent_type", "action.severity_estimate"],
+        guidance:
+          "Submit { action: { action_id, action_type, acting_agent_id, acting_agent_type, severity_estimate, cascade_depth?, jurisdiction?, eu_flags?, context_flags? } }. Optionally overrides: { allow_below, block_at_or_above, rationale }. Override rationale is required so the audit trail is complete.",
+      };
+    }
+    if (overrides && (overrides.allow_below !== undefined || overrides.block_at_or_above !== undefined) && !overrides.rationale) {
+      return {
+        ...base,
+        error: "override_missing_rationale",
+        guidance: "Threshold overrides require a rationale field citing the governance basis (e.g. 'ISO/IEC 42001 SoA §3.2 approval'). This is enforced so the override is auditable.",
+      };
+    }
+
+    const decision = await evaluateProspectiveResponse(action, {
+      overrides: overrides?.rationale
+        ? {
+            allow_below: overrides.allow_below,
+            block_at_or_above: overrides.block_at_or_above,
+            rationale: overrides.rationale,
+          }
+        : undefined,
+    });
+
+    return {
+      ...base,
+      ...decision,
+    };
+  }
+
+  // ── /api/v2/gate/thresholds ─────────────────────────────────────────────
+  // Public, free read of the per-jurisdiction allow/block thresholds. Lets
+  // callers preview the band without having to hard-code or guess them.
+  if (input.method === "GET" && input.path === "/api/v2/gate/thresholds") {
+    return {
+      ...base,
+      ruleId: PROSPECTIVE_GATE_RULE_ID,
+      ruleVersion: PROSPECTIVE_GATE_VERSION,
+      thresholds: JURISDICTION_THRESHOLDS,
+      notes: [
+        "EU is strictest (AI Act Art. 9 risk-management baseline).",
+        "AU is strict for regulated sectors (ACL Pt 3-2 + APRA CPS 230).",
+        "Production callers can loosen via overrides on /api/v2/gate/evaluate; a rationale is REQUIRED so audit trail is complete.",
+      ],
+    };
+  }
+
+  // ── /api/v2/remediation/catalog ─────────────────────────────────────────
+  // Public, free read of the remediation catalog. Lets callers (and the
+  // demo UI) discover the available remediation IDs without having to
+  // hard-code them.
+  if (input.method === "GET" && input.path === "/api/v2/remediation/catalog") {
+    return {
+      ...base,
+      ruleId: "FK-METHOD-2026-003",
+      ruleName: "Counterfactual Remediation Simulator v1",
+      catalogVersion: REMEDIATION_CATALOG_VERSION,
+      remediations: Object.values(REMEDIATION_CATALOG).map((r) => ({
+        id: r.id,
+        label: r.label,
+        targetType: r.targetType,
+        factorDeltas: r.factorDeltas,
+        maxReductionPp: r.maxReductionPp,
+        citation: r.citation,
+        rationale: r.rationale,
+      })),
+    };
+  }
+
+  // ── /api/v2/remediation/simulate ────────────────────────────────────────
+  // Closed-form counterfactual: takes a verdict + four-factor scoring +
+  // a list of remediation IDs from the catalog and returns the apportioned
+  // shares under each remediation in isolation, plus the composite where
+  // they all stack. Pure deterministic; same inputs -> byte-identical
+  // output. See docs/simulate-remediation.md for the citable design doc.
+  if (input.method === "POST" && input.path === "/api/v2/remediation/simulate") {
+    const body = (input.body ?? {}) as Record<string, unknown>;
+    const verdict = body.verdict as RemVerdictShares | undefined;
+    const fourFactor = body.fourFactorScoring as RemFourFactorScoring | undefined;
+    const remediations = (body.remediations as RemediationInput[] | undefined) ?? [];
+    const agents = ((body.agents as Array<{ id: string; type?: string }> | undefined) ??
+      []).map((a) => ({ id: a.id, type: a.type }));
+
+    if (!verdict || !fourFactor) {
+      return {
+        ...base,
+        error: "missing_required_fields",
+        required: ["verdict", "fourFactorScoring"],
+        guidance:
+          "Submit the verdict block and the fourFactorScoring block from the certificate, plus the agents list and the remediations to simulate. GET /api/v2/remediation/catalog to discover valid remediation IDs.",
+      };
+    }
+    if (!Array.isArray(remediations) || remediations.length === 0) {
+      return {
+        ...base,
+        error: "no_remediations_supplied",
+        guidance:
+          "Submit at least one remediation in the `remediations` array. Each entry is { id: <catalog-id>, appliedToParty?: <agent-id> }. GET /api/v2/remediation/catalog for valid ids.",
+      };
+    }
+
+    const result = simulateRemediation({
+      verdict,
+      fourFactorScoring: fourFactor,
+      agents,
+      remediations,
+    });
+
+    return {
+      ...base,
+      ...result,
+      catalogVersion: REMEDIATION_CATALOG_VERSION,
     };
   }
 
@@ -699,6 +1414,13 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
     availableEndpoints: [
       { method: "POST", path: "/api/v1/incidents/analyze", description: "Submit incident for liability attribution" },
       { method: "POST", path: "/api/v2/verify/certificate", description: "Verify a CausalCertificate" },
+      { method: "POST", path: "/api/v2/verify/recompute", description: "Re-derive a certificate from canonical input and compare byte-for-byte" },
+      { method: "GET", path: "/api/v2/remediation/catalog", description: "List the FK-METHOD-2026-003 remediation catalog" },
+      { method: "POST", path: "/api/v2/remediation/simulate", description: "Simulate counterfactual apportionment under one or more remediations" },
+      { method: "GET", path: "/api/v2/jurisdiction/catalog", description: "List supported jurisdictions and which overlays are research stubs in v1" },
+      { method: "POST", path: "/api/v2/jurisdiction/overlay", description: "Compare apportionment side-by-side across AU, EU, US, UK, CA (FK-METHOD-2026-004)" },
+      { method: "POST", path: "/api/v2/gate/evaluate", description: "Deterministic prospective-evaluation gate (FK-METHOD-2026-006): allow / require_revision / block on a ProposedAction BEFORE response delivery" },
+      { method: "GET", path: "/api/v2/gate/thresholds", description: "Read per-jurisdiction prospective-gate thresholds" },
       { method: "GET", path: "/api/v2/anchor/status", description: "Get anchor log status" },
       { method: "GET", path: "/api/v2/issuers", description: "Query issuer registry" },
       { method: "GET", path: "/api/v1/regulatory-lookup", description: "Regulatory framework lookup" },

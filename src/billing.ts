@@ -38,6 +38,13 @@ export interface BillingEnv {
   // Mode flags
   BILLING_MODE: "stripe" | "x402" | "free" | "demo"; // free = no charging (dev), demo = public free with rate-limit
   CAUSALLAYER_ENV: "dev" | "sandbox" | "production";
+
+  // Demo-mode rate-limit overrides (all optional; empty/missing = use defaults)
+  // Strings because env vars are strings.
+  DEMO_DAILY_PER_IP_SUBMIT?: string;       // default 5
+  DEMO_DAILY_PER_IP_VERIFY?: string;       // default 50
+  DEMO_DAILY_GLOBAL_SUBMIT?: string;       // default 1000
+  DEMO_BURST_WINDOW_SECONDS?: string;      // default 5
 }
 
 // ─── Pricing ───────────────────────────────────────────────────────────────
