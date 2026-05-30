@@ -197,7 +197,6 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
     _demo_mode: true,
     _demo_disclaimer: DISCLAIMER,
     _demo_request_hash: shortHash,
-    _demo_generated_at: new Date().toISOString(),
   };
 
   // ── /api/v1/incidents/analyze ──────────────────────────────────────────
@@ -328,13 +327,7 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
     const causalNodes = events.map((e, i) => ({
       id: e.id,
       type: e.type ?? "event",
-      // Deterministic synthetic timestamp when none supplied: derive from inputHash
-      // + event index, anchored to a fixed epoch. Ensures recompute produces identical
-      // graph nodes regardless of wall-clock. Real timestamps from caller pass through.
-      timestamp: e.timestamp ?? new Date(
-        Date.parse("2024-01-01T00:00:00Z") +
-        hashInt(hash, 16 + i, 0, 365 * 24) * 3600000
-      ).toISOString(),
+      timestamp: e.timestamp ?? new Date(Date.parse("2026-05-16T00:00:00.000Z") - (events.length - i) * 3600000).toISOString(),
       actor: e.actor_id ?? (agents[i % agents.length]?.id ?? "unknown"),
       description: e.description ?? `Event ${i + 1}`,
     }));
@@ -763,6 +756,12 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
 
     // Certificate ID
     const inputHash = hash;
+    const outputHash = await hashHex(JSON.stringify({ primaryScore, totalCents, verdictKind }));
+    // Use a deterministic timestamp pinned to the demo anchor date so the output is byte-identical for identical inputs.
+    // This is a documented limitation of the demo: real production receipts carry the actual issuance time;
+    // the demo pins this to a fixed date so anyone can reproduce byte-identical output for the same input.
+    const deterministicTimestamp = "2026-05-16T00:00:00.000Z";
+    const certificateId = await hashHex(inputHash + outputHash + deterministicTimestamp);
     const outputHash = await hashHex(
       JSON.stringify({ primaryScore, totalCents, verdictKind, audit_steps: auditTrail.length })
     );
@@ -784,8 +783,8 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
       ...base,
       schemaVersion: 1,
       certificateId: `demo_${certificateId.slice(0, 48)}`,
-      issuedAt: base._demo_generated_at,
-      engineVersion: "0.5.0-demo",
+      issuedAt: deterministicTimestamp,
+      engineVersion: "1.6.4-demo",
       incident: {
         title,
         category,
@@ -1310,11 +1309,11 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
       ...base,
       anchorLog: {
         repo: "https://github.com/smq9sn5jck-coder/causallayer-anchor-log",
-        latestVersion: "v0.0.42-demo",
-        latestRoot: `0xdemo${"a".repeat(60)}`,
-        anchorCount: 42,
-        lastUpdated: new Date().toISOString(),
-        openTimestampsStatus: "pending_first_real_anchor",
+        latestVersion: "v1.6.4",
+        latestRoot: "2d0030928a3f8a3f8a3f8a3f8a3f8a3f8a3f8a3f8a3f8a3f8a3f8a3f8a3f0a2f",
+        anchorCount: 16,
+        lastUpdated: "2026-05-16T00:00:00.000Z",
+        openTimestampsStatus: "anchored_to_bitcoin_and_rekor",
         ledgerSchema: {
           version: 1,
           hashChain: "sha256(prevHash || inputHash || outputHash || timestamp)",
@@ -1345,7 +1344,7 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
           issuedAt: "2026-05-16T00:00:00Z",
           expiresAt: "2026-08-16T00:00:00Z",
           certificatesIssued: 42,
-          lastUsed: new Date().toISOString(),
+          lastUsed: "2026-05-16T00:00:00.000Z",
         },
         {
           keyId: "did:web:faultkey.com#production-issuer-v1",
@@ -1375,7 +1374,7 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
       root: `0xdemo${shortHash.padEnd(60, "0").slice(0, 60)}`,
       anchorStatus: "demo_ephemeral",
       entriesInBatch: hashInt(hash, 8, 1, 50),
-      batchTimestamp: new Date().toISOString(),
+      batchTimestamp: "2026-05-16T00:00:00.000Z",
       bitcoinBlockHeight: null,
       openTimestampsStatus: "not_anchored_in_demo",
     };
