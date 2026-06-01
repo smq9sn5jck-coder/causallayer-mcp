@@ -426,7 +426,7 @@ export class CausalLayerMCP extends McpAgent<Env, unknown, SessionProps> {
         "x402-paid variant of verify_certificate. Charges " +
           `$${verifyUSD.toFixed(2)} USDC on ${env.X402_NETWORK} per call.`,
         verifyUSD,
-        { certificate: z.record(z.unknown()) },
+        { certificate: z.record(z.string(), z.unknown()) },
         {},
         async ({ certificate }: { certificate: Record<string, unknown> }) => {
           const result = await callApi(env, "POST", "/api/v2/verify/certificate", {
@@ -600,7 +600,7 @@ export class CausalLayerMCP extends McpAgent<Env, unknown, SessionProps> {
           "In production env, certificates from non-active issuers are rejected.",
         inputSchema: {
           certificate: z
-            .record(z.unknown())
+            .record(z.string(), z.unknown())
             .describe("CausalCertificateV1 object as returned by submit_incident.certificate"),
         },
       },
@@ -669,10 +669,10 @@ export class CausalLayerMCP extends McpAgent<Env, unknown, SessionProps> {
           "cascadeAttenuation, damages, underwriting) matches identically.",
         inputSchema: {
           certificate: z
-            .record(z.unknown())
+            .record(z.string(), z.unknown())
             .describe("The CausalCertificate object claimed by the issuer."),
           canonicalInput: z
-            .record(z.unknown())
+            .record(z.string(), z.unknown())
             .describe(
               "The original incident body that produced the certificate — the same JSON " +
               "originally posted to submit_incident or submit_otel_trace."
@@ -737,7 +737,7 @@ export class CausalLayerMCP extends McpAgent<Env, unknown, SessionProps> {
         inputSchema: {
           title: z.string().min(3),
           otlp: z
-            .record(z.unknown())
+            .record(z.string(), z.unknown())
             .describe(
               "OTLP JSON payload with resourceSpans[]. See " +
                 "https://opentelemetry.io/docs/specs/otlp/#json-protobuf-encoding"
