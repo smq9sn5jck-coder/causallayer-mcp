@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
-cd /home/ubuntu/causallayer-mcp
+# Run from the repo root regardless of where the script is invoked from.
+cd "$(dirname "$0")"
 esbuild src/standalone.ts \
   --bundle \
   --platform=node \
