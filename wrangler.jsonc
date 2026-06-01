@@ -61,7 +61,7 @@
   // recomputes each, verifies certificate hashes match, and writes one
   // signed JSONL line to the WEEKLY_PROOFS KV. The proof log is then
   // exposed publicly via GET /api/v2/proofs/weekly.
-  "triggers": { "crons": ["0 12 * * 1"] },
+  "triggers": { "crons": ["0 12 * * 1", "0 13 * * *"] },
 
   // KV namespace for the credit ledger. Replace the id values after running
   // `wrangler kv:namespace create LEDGER` (and the --env <name> variants).
@@ -118,7 +118,7 @@
         ]
       },
       "observability": { "enabled": true },
-      "triggers": { "crons": ["0 12 * * 1"] },
+      "triggers": { "crons": ["0 12 * * 1", "0 13 * * *"] },
       "kv_namespaces": [
         {
           "binding": "LEDGER",

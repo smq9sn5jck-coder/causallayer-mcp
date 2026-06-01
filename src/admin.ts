@@ -227,6 +227,13 @@ export async function handleAdmin(
       return json({ error: "stripe_failed", status: r.status, detail: t.slice(0, 300) }, 502);
     }
     const session = (await r.json()) as { id: string; url: string };
+    // Funnel: a checkout session was created (best-effort).
+    try {
+      const { recordFunnelStep } = await import("./analytics.js");
+      await recordFunnelStep(env, "checkout_started");
+    } catch {
+      /* best effort */
+    }
     return json({ checkout_url: session.url, session_id: session.id });
   }
 

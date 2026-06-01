@@ -22,6 +22,7 @@
  */
 
 import type { BillingEnv, ToolName } from "./billing.js";
+import { readRetention, readFunnel, readNpmTrend, type NpmEnv } from "./analytics.js";
 
 // ─── Request metadata extraction ───────────────────────────────────────
 
@@ -545,6 +546,15 @@ export async function handleAdminStats(
     cf_analytics = await fetchWorkersAnalytics(env.CLOUDFLARE_ACCOUNT_ID, env.CLOUDFLARE_ANALYTICS_TOKEN, days);
   }
 
+  // Adoption-validation analytics (src/analytics.ts, `an:` prefix):
+  // real-user retention (DAU/WAU/MAU), the conversion funnel (bot-filtered),
+  // and the npm download trend.
+  const [retention, funnel, npm] = await Promise.all([
+    readRetention(env),
+    readFunnel(env, days),
+    readNpmTrend(env as unknown as NpmEnv, 30),
+  ]);
+
   return new Response(
     JSON.stringify(
       {
@@ -553,6 +563,9 @@ export async function handleAdminStats(
           unique_ips_7d: uniq7.keys.length,
           active_tenants_7d: tenantsSeen.size,
         },
+        retention,
+        funnel,
+        npm,
         cf_analytics,
         generated_at: new Date().toISOString(),
       },

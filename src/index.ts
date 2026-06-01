@@ -58,6 +58,7 @@ import {
 } from "./demo.js";
 import { standaloneResponse } from "./standalone.js";
 import { handleLeads, handleLeadsList } from "./leads.js";
+import { snapshotNpmDownloads } from "./analytics.js";
 import { extractIncident, extractInputSchema, handleExtract } from "./extract.js";
 import { convertOtlpToIncident, type OtlpJson } from "./otel-ingest.js";
 import {
@@ -94,6 +95,10 @@ export interface Env extends BillingEnv {
   WEEKLY_PROOFS?: KVNamespace;
   ANCHOR_PRIVATE_KEY?: string; // base64 raw 32-byte Ed25519 seed (production only)
   ADMIN_TOKEN?: string; // gates POST /api/v2/proofs/run-now
+
+  // Adoption analytics (src/analytics.ts)
+  NPM_PACKAGE?: string;               // npm package to snapshot; default "causallayer-mcp"
+  ANALYTICS_PEPPER?: string;          // pepper for the stable pseudonymous retention id
 
   // /v1/leads first-party lead capture (KV-backed)
   LEADS_KV?: KVNamespace;
@@ -1791,7 +1796,14 @@ export default {
     env: Env,
     ctx: ExecutionContext
   ): Promise<void> {
-    ctx.waitUntil(runWeeklyAndPersist(env));
+    // npm download snapshot runs on every scheduled tick (idempotent per UTC
+    // day); the daily cron `0 13 * * *` is what keeps the trend line current.
+    ctx.waitUntil(snapshotNpmDownloads(env));
+    // Weekly determinism proof runs on its Monday cron (or whenever the cron
+    // string is unavailable, preserving prior behaviour).
+    if (!event.cron || event.cron === "0 12 * * 1") {
+      ctx.waitUntil(runWeeklyAndPersist(env));
+    }
   },
 };
 
