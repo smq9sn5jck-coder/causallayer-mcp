@@ -36,6 +36,8 @@
  */
 
 import { timingSafeEqual } from "./secure-compare.js";
+import { recordFunnelStep } from "./analytics.js";
+import type { BillingEnv } from "./billing.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -410,6 +412,12 @@ export async function handleLeads(
   } catch (e) {
     console.error("leads kv put failed", String((e as Error)?.message || e));
     return json({ ok: false, error: "insert_failed" }, { status: 500 }, cors);
+  }
+
+  // Funnel: count a genuinely new lead (not the deduped repeat path above).
+  const fenv = env as unknown as Partial<BillingEnv>;
+  if (fenv.LEDGER) {
+    _ctx.waitUntil(recordFunnelStep(fenv as BillingEnv, "lead_submitted"));
   }
 
   return json({ ok: true, lead_id: lead.id }, { status: 201 }, cors);

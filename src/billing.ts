@@ -391,6 +391,13 @@ export async function handleStripeWebhook(
   if (credits <= 0) return json({ error: "unknown_price_id" }, 400);
 
   await topUpCredits(env, tenantId, credits, sessionId, event.id);
+  // Funnel: a completed paid checkout (best-effort; never blocks the webhook ack).
+  try {
+    const { recordFunnelStep } = await import("./analytics.js");
+    await recordFunnelStep(env, "checkout_completed");
+  } catch {
+    /* best effort */
+  }
   return json({ ok: true, tenant_id: tenantId, credits_added: credits });
 }
 

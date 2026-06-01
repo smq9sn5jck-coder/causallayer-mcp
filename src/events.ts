@@ -39,6 +39,14 @@
  *   - tenant email addresses
  */
 import type { BillingEnv } from "./billing.js";
+import {
+  recordRealUser,
+  recordFunnelStep,
+  isRealUserUaCategory,
+} from "./analytics.js";
+
+/** Fixed pepper for the stable pseudonymous id. Override via env.ANALYTICS_PEPPER. */
+const DEFAULT_PSEUDO_PEPPER = "fk-2026-analytics-pid-v1";
 
 // ─── Public event names ────────────────────────────────────────────────
 
@@ -82,6 +90,23 @@ export async function anonymousSessionId(request: Request): Promise<string> {
   const ua = request.headers.get("user-agent") || "";
   const day = utcDay();
   const hex = await sha256Hex(`sid:v1:${day}:${ip}:${ua}`);
+  return hex.slice(0, 16);
+}
+
+/**
+ * Stable, coarse pseudonymous id used ONLY for retention (first/last-seen,
+ * DAU/WAU/MAU). Unlike anonymousSessionId this does NOT rotate daily — that is
+ * what lets us tell whether the same client comes back across days. It is a
+ * one-way hash of ip+ua with a pepper; no raw ip/ua is ever stored. Not a
+ * person id, and bounded by a 200-day TTL on the keys it feeds.
+ */
+export async function stablePseudoId(request: Request, pepper?: string): Promise<string> {
+  const ip =
+    request.headers.get("cf-connecting-ip") ||
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    "0.0.0.0";
+  const ua = request.headers.get("user-agent") || "";
+  const hex = await sha256Hex(`pid:v1:${pepper || DEFAULT_PSEUDO_PEPPER}:${ip}:${ua}`);
   return hex.slice(0, 16);
 }
 
@@ -255,6 +280,14 @@ export async function logEvent(
     // 2. Best-effort aggregate counters in KV for fast /admin/stats reads.
     if (env.LEDGER && ctx?.waitUntil) {
       ctx.waitUntil(updateCounters(env, line));
+      // 3. Retention + funnel analytics (bot-filtered), under the `an:` prefix.
+      ctx.waitUntil(
+        recordInteractionAnalytics(env, request, {
+          event,
+          ua_category: ua_cat,
+          request_path: extras.request_path,
+        })
+      );
     }
   } catch {
     // Telemetry must NEVER break the user-facing response.
@@ -325,6 +358,46 @@ async function updateCounters(
     );
   } catch {
     // best effort
+  }
+}
+
+// ─── Retention + funnel analytics (bot-filtered) ───────────────────────
+
+/**
+ * Map one logged event onto the retention store and the conversion funnel.
+ * Bots (search/SEO crawlers, empty UA) are excluded from both. Never throws.
+ */
+async function recordInteractionAnalytics(
+  env: BillingEnv,
+  request: Request,
+  line: { event: EventName; ua_category: string; request_path: string }
+): Promise<void> {
+  try {
+    const real = isRealUserUaCategory(line.ua_category);
+    if (!real) return; // crawlers/CI/self do not count toward adoption
+
+    // Funnel steps that are observable from a single request.
+    if (line.event === "app_opened") {
+      await recordFunnelStep(env, "visit");
+    } else if (line.event === "api_request" && line.request_path.startsWith("/mcp")) {
+      await recordFunnelStep(env, "mcp_connect");
+    } else if (line.event === "report_generated") {
+      await recordFunnelStep(env, "report_generated");
+    }
+
+    // Retention: only genuine interactions (a connect or a tool call), not a
+    // bare landing-page hit.
+    if (
+      line.event === "api_request" ||
+      line.event === "report_generated" ||
+      line.event === "websocket_connected"
+    ) {
+      const pepper = (env as { ANALYTICS_PEPPER?: string }).ANALYTICS_PEPPER;
+      const pid = await stablePseudoId(request, pepper);
+      await recordRealUser(env, pid, line.ua_category);
+    }
+  } catch {
+    /* best effort */
   }
 }
 
