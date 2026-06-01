@@ -35,6 +35,8 @@
  * the same body shape to both /v1/leads and Formspree without branching.
  */
 
+import { timingSafeEqual } from "./secure-compare.js";
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /** Subset of the global Env interface relevant to this module. Re-declared
@@ -439,7 +441,7 @@ export async function handleLeadsList(
   const provided =
     request.headers.get("X-Admin-Token") ||
     (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
-  if (provided !== env.LEADS_ADMIN_TOKEN) {
+  if (!timingSafeEqual(provided, env.LEADS_ADMIN_TOKEN)) {
     return json({ ok: false, error: "unauthorized" }, { status: 401 }, cors);
   }
   if (!env.LEADS_KV) {

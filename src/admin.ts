@@ -29,10 +29,11 @@ import {
   topUpCredits,
 } from "./billing.js";
 import { readEventStats, type EventStats } from "./events.js";
+import { timingSafeEqual } from "./secure-compare.js";
 
 function requireAdmin(env: BillingEnv, request: Request): Response | null {
   const tok = request.headers.get("X-Admin-Token");
-  if (!env.ADMIN_TOKEN || tok !== env.ADMIN_TOKEN) {
+  if (!env.ADMIN_TOKEN || !timingSafeEqual(tok ?? "", env.ADMIN_TOKEN)) {
     return json({ error: "unauthorized" }, 401);
   }
   return null;
