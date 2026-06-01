@@ -91,6 +91,7 @@
     "PRICE_VERIFY_CERTIFICATE": "1",
     "PRICE_GET_ANCHOR_STATUS": "0",
     "PRICE_QUERY_ISSUER_REGISTRY": "0",
+    "PRICE_EXTRACT_INCIDENT": "10",
     // Demo rate-limit overrides (mirrored into env.demo.vars below).
     // Defaults in src/demo.ts are 5/50/1000 — too tight for a public demo where
     // visitors hit the cap on their second submit. Bumping to 50/200/5000 so a
@@ -140,6 +141,7 @@
         "PRICE_VERIFY_CERTIFICATE": "1",
         "PRICE_GET_ANCHOR_STATUS": "0",
         "PRICE_QUERY_ISSUER_REGISTRY": "0",
+        "PRICE_EXTRACT_INCIDENT": "10",
         // Demo rate-limit overrides. Bumped from defaults (5/50/1000) to give
         // real visitors of faultkey.com/try room to evaluate the engine without
         // hitting the daily cap on the first or second try. See src/demo.ts.

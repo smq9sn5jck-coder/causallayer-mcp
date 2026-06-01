@@ -53,7 +53,8 @@ export type ToolName =
   | "submit_incident"
   | "verify_certificate"
   | "get_anchor_status"
-  | "query_issuer_registry";
+  | "query_issuer_registry"
+  | "extract_incident";
 
 export function priceFor(env: BillingEnv, tool: ToolName): number {
   const map: Record<ToolName, string | undefined> = {
@@ -61,6 +62,7 @@ export function priceFor(env: BillingEnv, tool: ToolName): number {
     verify_certificate: env.PRICE_VERIFY_CERTIFICATE,
     get_anchor_status: env.PRICE_GET_ANCHOR_STATUS,
     query_issuer_registry: env.PRICE_QUERY_ISSUER_REGISTRY,
+    extract_incident: (env as unknown as Record<string, string | undefined>).PRICE_EXTRACT_INCIDENT,
   };
   const raw = map[tool];
   const n = raw ? Number.parseInt(raw, 10) : NaN;
