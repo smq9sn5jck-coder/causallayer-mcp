@@ -106,9 +106,9 @@
     "demo": {
       "name": "causallayer-mcp-demo",
       "workers_dev": true,
-      "routes": [
-        { "pattern": "mcp.faultkey.com/*", "zone_name": "faultkey.com" }
-      ],
+      // "routes": [
+      //   { "pattern": "mcp.faultkey.com/*", "zone_name": "faultkey.com" }
+      // ],
       "migrations": [
         { "tag": "v1", "new_sqlite_classes": ["CausalLayerMCP"] }
       ],

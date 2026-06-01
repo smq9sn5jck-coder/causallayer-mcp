@@ -156,7 +156,7 @@ export async function extractIncident(
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
         messages: [
@@ -275,7 +275,7 @@ export async function handleExtract(
       ok: true,
       incident: result.incident,
       _meta: {
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         note: "This is a pre-processing extraction. The incident has NOT been scored yet. " +
               "Pass the 'incident' object to submit_incident to run the deterministic engine.",
       },

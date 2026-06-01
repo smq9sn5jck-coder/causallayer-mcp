@@ -1315,7 +1315,7 @@ export class CausalLayerMCP extends McpAgent<Env, unknown, SessionProps> {
                       credits_charged: priceFor(env, "extract_incident"),
                     },
                     extraction: {
-                      model: "claude-sonnet-4-20250514",
+                      model: "claude-sonnet-4-6",
                       note:
                         "This is a pre-processing extraction. The incident has NOT been " +
                         "scored yet. Pass the 'incident' object to submit_incident to run " +
