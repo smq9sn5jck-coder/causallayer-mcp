@@ -27,11 +27,22 @@ const TWO_AGENT_ONE_EVENT = {
   title: "Chatbot gave unauthorised refund",
   severity: "high",
   jurisdiction: "AU",
+  // Damages are only computed from a caller-supplied impact; the engine now
+  // abstains rather than fabricating one, so tests that assert damages figures
+  // must provide it explicitly.
+  financial_impact_cents: 5_000_00,
   agents: [
     { id: "agent_ai", type: "ai_system", name: "Support Bot" },
     { id: "agent_deployer", type: "deployer", name: "Acme Corp" },
   ],
-  events: [{ id: "ev1", type: "decision", actor_id: "agent_ai" }],
+  events: [
+    {
+      id: "ev1",
+      type: "decision",
+      actor_id: "agent_ai",
+      description: "Bot issued an unauthorised refund without human review.",
+    },
+  ],
 };
 
 describe("standaloneResponse — determinism", () => {
@@ -106,6 +117,66 @@ describe("standaloneResponse — verdict invariants", () => {
     const critical = await analyze({ ...TWO_AGENT_ONE_EVENT, severity: "critical" });
     expect((high.damages as AnyRec).punitiveCents).toBe(0);
     expect((critical.damages as AnyRec).punitiveCents as number).toBeGreaterThan(0);
+  });
+});
+
+describe("standaloneResponse — evidence-derived scoring (no hash fabrication)", () => {
+  it("ABSTAINS on damages when no financial_impact_cents is supplied", async () => {
+    const { financial_impact_cents, ...noImpact } = TWO_AGENT_ONE_EVENT;
+    void financial_impact_cents;
+    const cert = await analyze(noImpact);
+    const damages = cert.damages as AnyRec;
+    expect(damages.status).toBe("abstained");
+    expect(damages).not.toHaveProperty("totalCents");
+    // Dollar modules abstain in lockstep; liability shares are still reported.
+    expect((cert.actuarial as AnyRec).status).toBe("abstained");
+    expect((cert.blastRadius as AnyRec).status).toBe("abstained");
+    expect((cert.underwriting as AnyRec).expectedAnnualLossCents).toBeNull();
+  });
+
+  it("computes damages from a supplied impact (no hash seeding)", async () => {
+    const cert = await analyze(TWO_AGENT_ONE_EVENT);
+    const damages = cert.damages as AnyRec;
+    expect(damages.status).toBeUndefined();
+    expect(damages.totalCents as number).toBeGreaterThan(0);
+  });
+
+  it("derives deviation modes from the incident text, not a hash", async () => {
+    const cert = await analyze(TWO_AGENT_ONE_EVENT);
+    const modes = (cert.deviationTaxonomy as Array<{ mode: string; evidence: string[] }>).map((d) => d.mode);
+    // The refund-without-review text should surface these modes:
+    expect(modes).toContain("authority_boundary_violation");
+    expect(modes).toContain("oversight_mechanism_bypass");
+  });
+
+  it("reports NO deviations when the text contains none", async () => {
+    const cert = await analyze({
+      ...TWO_AGENT_ONE_EVENT,
+      title: "Routine batch job completed",
+      events: [{ id: "ev1", type: "info", actor_id: "agent_ai", description: "Job finished." }],
+    });
+    expect((cert.deviationTaxonomy as unknown[]).length).toBe(0);
+  });
+
+  it("drops the fabricated calibration claims (no R2 / 725 resolved-outcomes)", async () => {
+    const cert = await analyze(TWO_AGENT_ONE_EVENT);
+    expect(cert.damages as AnyRec).not.toHaveProperty("calibrationR2");
+    expect(cert.crossCaseCalibration as AnyRec).not.toHaveProperty("resolvedOutcomesUsed");
+    expect((cert.crossCaseCalibration as AnyRec).performed).toBe(false);
+    expect(JSON.stringify(cert)).not.toContain("725");
+  });
+
+  it("returns precedents by real factor overlap, with shared factors shown", async () => {
+    const cert = await analyze(TWO_AGENT_ONE_EVENT);
+    const precedents = cert.precedents as Array<{ similarity: number; sharedFactors: string[] }>;
+    expect(precedents.length).toBeGreaterThan(0);
+    for (const p of precedents) {
+      expect(p.similarity).toBeGreaterThan(0);
+      expect(p.sharedFactors.length).toBeGreaterThan(0);
+    }
+    // Sorted descending by similarity.
+    const sims = precedents.map((p) => p.similarity);
+    expect([...sims].sort((a, b) => b - a)).toEqual(sims);
   });
 });
 
