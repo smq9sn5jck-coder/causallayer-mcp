@@ -146,9 +146,13 @@ The CausalLayer engine itself (the closed-form fault math) runs upstream and is 
 
 For enterprise tenants email **sales@faultkey.com** (or open a GitHub issue with subject "enterprise inquiry").
 
-## Free AI Liability Risk Assessment
+## Interactive Tools
 
-> **Not sure where your AI liability exposure sits?** Take the free [FaultKey AI Liability Risk Assessment](https://form.jotform.com/261486061447056) — 2 minutes, no sales call, instant preliminary risk score. Covers EU AI Act, APRA CPS 230, and NIST AI RMF.
+> **Score any AI incident in seconds** — [faultkey.com/score](https://faultkey.com/score) — describe what happened, get a deterministic liability split with dollar exposure, jurisdiction analysis, and a shareable verdict card.
+>
+> **Compare vendor liability profiles** — [faultkey.com/compare](https://faultkey.com/compare) — side-by-side comparison of AI vendors (OpenAI vs Anthropic vs Google etc.) across incident types.
+>
+> **Public accuracy ledger** — [faultkey.com/track-record](https://faultkey.com/track-record) — 7/7 direction match on backtested cases, 3 pending predictions on active litigation.
 
 ## License
 
@@ -158,10 +162,11 @@ Apache 2.0. See [LICENSE](./LICENSE).
 
 If FaultKey helped you understand AI liability, saved you research time, or you just think deterministic fault attribution should exist:
 
-- **Star this repo** — [github.com/smq9sn5jck-coder/causallayer-mcp](https://github.com/smq9sn5jck-coder/causallayer-mcp/stargazers)
+- **⭐ Star this repo** — [github.com/smq9sn5jck-coder/causallayer-mcp](https://github.com/smq9sn5jck-coder/causallayer-mcp/stargazers) (takes 2 seconds, helps others find it)
 - **Share it** — post on LinkedIn, X, or your team Slack
-- **Try the demo** — [Interactive Demo](https://mcp.faultkey.com/try)
-- **Take the free assessment** — [AI Liability Risk Assessment](https://form.jotform.com/261486061447056)
+- **Score an incident** — [faultkey.com/score](https://faultkey.com/score)
+- **Compare vendors** — [faultkey.com/compare](https://faultkey.com/compare)
+- **Join the discussion** — [GitHub Discussions](https://github.com/smq9sn5jck-coder/causallayer-mcp/discussions)
 
 ## Built in Brisbane
 
