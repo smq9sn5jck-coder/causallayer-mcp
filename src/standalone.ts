@@ -440,6 +440,11 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
           share: +((weights[i]! / totalWeight) * remainingShare).toFixed(3),
         });
       });
+    } else {
+      // Single-party incident: the sole identified agent bears the full
+      // attributed liability so the split sums to 100%. The four-factor weighted
+      // score is retained in fourFactorScoring as the fault-intensity detail.
+      primaryScore = 1.0;
     }
 
     // ── Apply Cascade Attenuation Rule (FK-METHOD-2026-002) ───────────────
