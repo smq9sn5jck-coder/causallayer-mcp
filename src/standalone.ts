@@ -199,10 +199,14 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
     _demo_request_hash: shortHash,
     _demo_generated_at: new Date().toISOString(),
     _next_steps: {
+      score_your_incident: "https://faultkey.com/score",
+      compare_vendors: "https://faultkey.com/compare",
+      track_record: "https://faultkey.com/track-record",
       production_access: "https://faultkey.com/#waitlist",
       github: "https://github.com/smq9sn5jck-coder/causallayer-mcp",
-      docs: "https://faultkey.com/docs",
-      message: "Like what you see? Star the repo and join the waitlist for production access with real Bitcoin anchoring.",
+      star_the_repo: "https://github.com/smq9sn5jck-coder/causallayer-mcp/stargazers",
+      discussions: "https://github.com/smq9sn5jck-coder/causallayer-mcp/discussions",
+      message: "Found this useful? Star the repo (2s) → it helps others discover deterministic AI liability scoring. Run a full interactive report at faultkey.com/score.",
     },
   };
 
