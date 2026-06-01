@@ -43,6 +43,7 @@ import {
   type ToolName,
 } from "./billing.js";
 import { handleAdmin } from "./admin.js";
+import { timingSafeEqual } from "./secure-compare.js";
 import { logEvent } from "./events.js";
 import { handleWellKnown } from "./well-known.js";
 import {
@@ -1458,7 +1459,7 @@ export default {
     // Returns 404 (not 401) on unauth to avoid signaling the surface.
     if (url.pathname === "/api/v2/proofs/run-now" && request.method === "POST") {
       const provided = request.headers.get("x-admin-token") ?? "";
-      if (!env.ADMIN_TOKEN || provided !== env.ADMIN_TOKEN) {
+      if (!env.ADMIN_TOKEN || !timingSafeEqual(provided, env.ADMIN_TOKEN)) {
         await logEvent("api_error", request, env, ctx, {
           request_path: url.pathname,
           method: request.method,
@@ -1495,7 +1496,7 @@ export default {
     // /admin/stats traffic remains observable in /stats and /admin/stats.
     if (url.pathname === "/admin/stats") {
       const provided = request.headers.get("x-admin-token") ?? "";
-      if (!env.ADMIN_TOKEN || provided !== env.ADMIN_TOKEN) {
+      if (!env.ADMIN_TOKEN || !timingSafeEqual(provided, env.ADMIN_TOKEN)) {
         await logEvent("api_error", request, env, ctx, {
           request_path: url.pathname,
           method: request.method,
@@ -1515,7 +1516,7 @@ export default {
     if (url.pathname === "/me" || url.pathname.startsWith("/admin/")) {
       if (url.pathname.startsWith("/admin/")) {
         const provided = request.headers.get("x-admin-token") ?? "";
-        if (!env.ADMIN_TOKEN || provided !== env.ADMIN_TOKEN) {
+        if (!env.ADMIN_TOKEN || !timingSafeEqual(provided, env.ADMIN_TOKEN)) {
           await logEvent("api_error", request, env, ctx, {
             request_path: url.pathname,
             method: request.method,
