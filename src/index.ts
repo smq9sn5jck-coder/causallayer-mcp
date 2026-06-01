@@ -57,6 +57,7 @@ import {
 } from "./demo.js";
 import { standaloneResponse } from "./standalone.js";
 import { handleLeads, handleLeadsList } from "./leads.js";
+import { extractIncident, extractInputSchema, handleExtract } from "./extract.js";
 import { convertOtlpToIncident, type OtlpJson } from "./otel-ingest.js";
 import {
   runWeeklyDeterminism,
@@ -100,6 +101,9 @@ export interface Env extends BillingEnv {
   TURNSTILE_SECRET?: string;          // optional bot-protection
   TURNSTILE_REQUIRED?: string;        // "true" to enforce
   LEADS_DAILY_SALT_KEY?: string;      // optional pepper override
+
+  // Claude-powered Structured Extractor (extract_incident tool)
+  ANTHROPIC_API_KEY?: string;
 }
 
 function parseUsd(v: string | undefined, fallback: number): number {
@@ -1257,6 +1261,77 @@ export class CausalLayerMCP extends McpAgent<Env, unknown, SessionProps> {
         }) as Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }>;
       }
     );
+
+    // ── Tool 5: extract_incident (Claude-powered) ─────────────────────────
+    // Pre-processing tool that converts unstructured text (news articles,
+    // court filings, emails, incident reports) into the structured JSON
+    // schema required by submit_incident. Uses Claude Sonnet for extraction.
+    // The deterministic scoring path remains LLM-free — this is an optional
+    // convenience layer for intake automation.
+    this.server.registerTool(
+      "extract_incident",
+      {
+        description:
+          "Claude-powered structured extractor. Parses unstructured text (news articles, " +
+          "court filings, emails, PDFs, incident reports, logs) into the typed JSON schema " +
+          "required by submit_incident. Returns a ready-to-submit incident object with " +
+          "extracted agents, events, severity, jurisdiction, and financial impact. " +
+          "NOTE: This is a pre-processing convenience tool — the deterministic scoring " +
+          "engine itself remains LLM-free. " +
+          `Cost: ${priceFor(env, "extract_incident")} credits.`,
+        inputSchema: extractInputSchema,
+      },
+      async (input) => {
+        return withBilling(env, tenantId, "extract_incident", meta, async () => {
+          const result = await extractIncident(
+            env,
+            input.text,
+            input.context_hint,
+            input.jurisdiction_hint
+          );
+
+          if (!result.ok) {
+            return {
+              isError: true,
+              content: [
+                {
+                  type: "text",
+                  text: `EXTRACTION_FAILED: ${result.error}`,
+                },
+              ],
+            };
+          }
+
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(
+                  {
+                    env: env.CAUSALLAYER_ENV,
+                    tenant_id: tenantId,
+                    billing: {
+                      tool: "extract_incident",
+                      credits_charged: priceFor(env, "extract_incident"),
+                    },
+                    extraction: {
+                      model: "claude-sonnet-4-6",
+                      note:
+                        "This is a pre-processing extraction. The incident has NOT been " +
+                        "scored yet. Pass the 'incident' object to submit_incident to run " +
+                        "the deterministic engine.",
+                    },
+                    incident: result.incident,
+                  },
+                  null,
+                  2
+                ),
+              },
+            ],
+          };
+        }) as Promise<{ content: Array<{ type: "text"; text: string }>; isError?: boolean }>;
+      }
+    );
   }
 }
 
@@ -1366,6 +1441,19 @@ export default {
       });
     }
 
+    // Claude-powered structured extractor (REST endpoint)
+    //   POST /v1/extract → parse unstructured text into FaultKey incident schema
+    if (url.pathname === "/v1/extract" && request.method === "POST") {
+      const res = await handleExtract(request, env);
+      await logEvent("api_request", request, env, ctx, {
+        request_path: url.pathname,
+        method: request.method,
+        response_status: res.status,
+        duration_ms: Date.now() - t0,
+      });
+      return res;
+    }
+
     // First-party lead capture (replaces Formspree fallback)
     //   POST /v1/leads  → public submission, KV-backed
     //   GET  /v1/leads  → admin list, X-Admin-Token required
@@ -1397,6 +1485,7 @@ export default {
           { name: "verify_certificate", credits: priceFor(env, "verify_certificate") },
           { name: "get_anchor_status", credits: priceFor(env, "get_anchor_status") },
           { name: "query_issuer_registry", credits: priceFor(env, "query_issuer_registry") },
+          { name: "extract_incident", credits: priceFor(env, "extract_incident") },
         ],
         endpoints: {
           mcp: "/mcp (Bearer clk_… required when BILLING_MODE=stripe)",
