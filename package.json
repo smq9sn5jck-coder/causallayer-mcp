@@ -1,7 +1,7 @@
 {
   "name": "@faultkey/causallayer-mcp",
   "version": "0.4.0",
-  "description": "Model Context Protocol server for CausalLayer \u2014 deterministic AI liability attribution with Bitcoin-anchored, signed certificates. Runs on Cloudflare Workers or locally via npx.",
+  "description": "Model Context Protocol server for CausalLayer — deterministic AI liability attribution with Bitcoin-anchored, signed certificates. Runs on Cloudflare Workers or locally via npx.",
   "private": false,
   "license": "MIT",
   "type": "module",
@@ -52,6 +52,7 @@
     "deploy:production": "wrangler deploy --env production",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage --coverage.include='src/**'",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write ."
@@ -64,6 +65,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240924.0",
     "@types/node": "^22.7.4",
+    "@vitest/coverage-v8": "^4.1.7",
     "esbuild": "^0.28.0",
     "typescript": "^5.6.3",
     "vitest": "^4.1.7",
