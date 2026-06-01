@@ -106,26 +106,6 @@ const LIABILITY_MODES: Record<string, string[]> = {
   third_party: ["hybrid"],
 };
 
-const DEVIATION_TAXONOMY = [
-  "specification_gaming",
-  "reward_hacking",
-  "distributional_shift",
-  "capability_overhang",
-  "goal_misgeneralisation",
-  "prompt_injection",
-  "jailbreak",
-  "data_poisoning",
-  "sensor_occlusion",
-  "ods_non_compliance",
-  "authority_boundary_violation",
-  "oversight_mechanism_bypass",
-  "cascading_multi_agent_failure",
-  "supply_chain_dependency_failure",
-  "model_drift",
-  "adversarial_input",
-  "hallucination",
-];
-
 const STRESS_SCENARIOS = [
   "adversarial_input_injection",
   "cascading_multi_agent_failure",
@@ -161,27 +141,216 @@ interface Event {
   trace_source?: "opentelemetry" | "jaeger" | "zipkin" | "datadog" | "newrelic" | "other";
 }
 
-function computePrimaryScore(
-  hash: string,
-  severity: string,
-  primaryType: string,
-  eventCount: number,
-  agentCount: number
-): number {
-  // Base from hash (deterministic seed)
-  const base = hashFloat(hash, 8, 0.40, 0.70);
-  // Severity influence (+/- up to 0.15)
-  const sevWeight = SEVERITY_WEIGHTS[severity] ?? 0.64;
-  const sevInfluence = (sevWeight - 0.64) * 0.4;
-  // Agent type influence
-  const typeInfluence = AGENT_TYPE_LIABILITY_BIAS[primaryType] ?? 0;
-  // More events = slightly higher primary share (more evidence)
-  const eventInfluence = Math.min(eventCount * 0.015, 0.06);
-  // More agents = slightly lower primary share (distributed)
-  const agentInfluence = Math.min((agentCount - 1) * -0.03, 0);
+function clamp3(n: number, lo: number, hi: number): number {
+  return +Math.max(lo, Math.min(hi, n)).toFixed(3);
+}
 
-  const raw = base + sevInfluence + typeInfluence + eventInfluence + agentInfluence;
-  return +Math.max(0.25, Math.min(0.95, raw)).toFixed(3);
+// ─── Evidence-derived deviation detection (deterministic, no hash) ──────────
+// Each taxonomy mode maps to substrings we look for in the incident's free
+// text (title + description + event types/descriptions). A mode is reported
+// ONLY when its evidence actually appears, and confidence scales with the
+// number of distinct keyword hits — never a SHA-256 draw. The keys are the
+// canonical 17-mode taxonomy.
+const DEVIATION_KEYWORDS: Record<string, string[]> = {
+  hallucination: ["hallucinat", "fabricat", "made up", "made-up", "invented", "non-existent", "nonexistent", "false citation", "untrue", "confabulat", "satirical source"],
+  prompt_injection: ["prompt injection", "prompt-injection", "injected instruction", "ignore previous", "ignore all previous"],
+  jailbreak: ["jailbreak", "jail-break", "bypass guardrail", "bypassed guardrail", "bypassed the guardrail", "circumvent"],
+  data_poisoning: ["data poison", "poisoned", "tainted training", "corrupted training"],
+  specification_gaming: ["specification gaming", "gamed the", "loophole", "exploited the spec", "shortcut"],
+  reward_hacking: ["reward hack", "proxy metric", "optimised for the metric", "optimized for the metric"],
+  distributional_shift: ["out of distribution", "out-of-distribution", "distribution shift", "distributional shift", "unseen input"],
+  goal_misgeneralisation: ["misgeneralis", "misgeneraliz", "wrong objective", "misaligned goal"],
+  model_drift: ["model drift", "drifted", "degraded over time", "stale model", "performance regression"],
+  adversarial_input: ["adversarial", "perturbation attack", "malicious input"],
+  authority_boundary_violation: ["unauthorised", "unauthorized", "exceeded its authority", "without approval", "without authorisation", "without authorization", "issued a refund", "unauthorised refund", "unauthorized refund", "committed the company"],
+  oversight_mechanism_bypass: ["no human review", "without oversight", "without human", "bypassed review", "skipped review", "no human in the loop"],
+  cascading_multi_agent_failure: ["cascad", "chain reaction", "downstream agent", "propagated to"],
+  supply_chain_dependency_failure: ["third-party", "third party", "upstream service", "vendor api", "dependency failure", "supply chain"],
+  sensor_occlusion: ["sensor", "camera", "lidar", "occlud", "obscured view"],
+  capability_overhang: ["unexpected capability", "emergent behaviour", "emergent behavior"],
+  ods_non_compliance: ["operational design domain", "out of design", "operating envelope", "outside its design"],
+};
+
+interface DetectedDeviation {
+  mode: string;
+  confidence: number;
+  agent: string;
+  evidence: string[];
+}
+
+function detectDeviations(texts: string[], primaryAgentId: string): DetectedDeviation[] {
+  const hay = texts.join("  ").toLowerCase();
+  const found: DetectedDeviation[] = [];
+  for (const [mode, kws] of Object.entries(DEVIATION_KEYWORDS)) {
+    const evidence = kws.filter((k) => hay.includes(k));
+    if (evidence.length === 0) continue;
+    // Honest proxy for "how strongly the text matches this mode" — 0.55 floor
+    // plus 0.12 per distinct keyword hit, capped. Not a calibrated probability.
+    const confidence = clamp3(0.55 + evidence.length * 0.12, 0.55, 0.95);
+    found.push({ mode, confidence, agent: primaryAgentId, evidence });
+  }
+  found.sort((a, b) => b.confidence - a.confidence || a.mode.localeCompare(b.mode));
+  return found;
+}
+
+// ─── Four-factor scoring derived from the actual causal graph + types ───────
+interface FourFactor {
+  causalProximity: number;
+  behaviouralDeviation: number;
+  controllability: number;
+  regulatoryAlignment: number;
+}
+
+const CONTROLLABILITY_BY_TYPE: Record<string, number> = {
+  ai_system: 0.72,
+  vendor: 0.62,
+  deployer: 0.55,
+  human_operator: 0.8,
+  user: 0.45,
+  third_party: 0.4,
+};
+
+function computeFourFactor(args: {
+  agents: Agent[];
+  events: Event[];
+  primaryAgent: Agent;
+  severity: string;
+  deviations: DetectedDeviation[];
+  regulatoryViolation: boolean;
+}): FourFactor {
+  const { agents, events, primaryAgent, severity, deviations, regulatoryViolation } = args;
+  // Causal proximity: share of events actored by the primary agent, plus a bump
+  // when the primary is the actor of the root-cause (first) event.
+  const evCount = Math.max(1, events.length);
+  const primaryActorEvents = events.filter(
+    (e) => (e.actor_id ?? primaryAgent.id) === primaryAgent.id
+  ).length;
+  const isRootActor = (events[0]?.actor_id ?? primaryAgent.id) === primaryAgent.id;
+  const causalProximity = clamp3(
+    0.35 + 0.4 * (primaryActorEvents / evCount) + (isRootActor ? 0.15 : 0),
+    0.2,
+    0.95
+  );
+  // Behavioural deviation: driven by deviations actually detected on the primary.
+  const primaryDeviations = deviations.filter((d) => d.agent === primaryAgent.id);
+  const avgConf = primaryDeviations.length
+    ? primaryDeviations.reduce((s, d) => s + d.confidence, 0) / primaryDeviations.length
+    : 0;
+  const behaviouralDeviation = clamp3(
+    0.2 + 0.55 * avgConf + 0.06 * Math.min(primaryDeviations.length, 3),
+    0.1,
+    0.95
+  );
+  // Controllability: by primary agent type, reduced when an oversight party
+  // (human_operator / deployer) also exists and could have intervened.
+  const oversightPresent = agents.some(
+    (a) => a.id !== primaryAgent.id && (a.type === "human_operator" || a.type === "deployer")
+  );
+  const controllability = clamp3(
+    (CONTROLLABILITY_BY_TYPE[primaryAgent.type ?? "ai_system"] ?? 0.6) - (oversightPresent ? 0.1 : 0),
+    0.2,
+    0.95
+  );
+  // Regulatory alignment: lower = worse. Severity-driven, with a penalty when a
+  // regulatory violation was mapped for this jurisdiction.
+  const sevBase: Record<string, number> = { critical: 0.35, high: 0.5, medium: 0.65, low: 0.78 };
+  const regulatoryAlignment = clamp3(
+    (sevBase[severity] ?? 0.65) - (regulatoryViolation ? 0.12 : 0),
+    0.15,
+    0.9
+  );
+  return { causalProximity, behaviouralDeviation, controllability, regulatoryAlignment };
+}
+
+function evidenceConfidence(events: Event[], agents: Agent[]): number {
+  if (events.length === 0) return 0.3;
+  const withTs = events.filter((e) => e.timestamp).length / events.length;
+  const withDesc = events.filter((e) => e.description).length / events.length;
+  const typedAgents = agents.length ? agents.filter((a) => a.type).length / agents.length : 0;
+  return clamp3(
+    0.3 + 0.25 * withDesc + 0.2 * withTs + 0.15 * typedAgents + Math.min(events.length, 4) * 0.02,
+    0.3,
+    0.92
+  );
+}
+
+function computeForeseeability(severity: string, deviations: DetectedDeviation[]): number {
+  const sevBase: Record<string, number> = { critical: 0.8, high: 0.65, medium: 0.5, low: 0.4 };
+  const knownModes = deviations.some((d) =>
+    ["hallucination", "model_drift", "prompt_injection", "jailbreak", "specification_gaming"].includes(d.mode)
+  );
+  return clamp3((sevBase[severity] ?? 0.5) + (knownModes ? 0.1 : 0), 0.2, 0.95);
+}
+
+// ─── Precedent matching: real feature overlap (Jaccard) over a small corpus ──
+interface PrecedentCase {
+  case: string;
+  outcome: string;
+  principle: string;
+  tags: string[];
+}
+const PRECEDENT_CORPUS: PrecedentCase[] = [
+  { case: "Uber ATG / Herzberg (2018-2020)", outcome: "Operator/deployer bore primary responsibility for safety-critical oversight", principle: "Non-delegable duty of safety-critical oversight", tags: ["safety_critical", "deployer", "ai_agent", "physical_harm", "oversight_failure", "autonomous_system"] },
+  { case: "Moffatt v. Air Canada (2024)", outcome: "Deployer held liable for its chatbot's misrepresentations", principle: "A deployer answers for representations made by its AI agent", tags: ["misinformation", "representation", "chatbot", "deployer", "consumer", "ai_agent"] },
+  { case: "Loomis v. Wisconsin / COMPAS (2016)", outcome: "Scrutiny of a vendor risk model used in decision-making", principle: "Validity and transparency duties for decision-support models", tags: ["bias", "vendor", "decision_support", "opacity", "ai_agent"] },
+  { case: "Robodebt (AU 2019-2023)", outcome: "Government deployer liable for flawed automated decision-making", principle: "Operational failure in automated decision-making", tags: ["automation", "deployer", "decision_support", "consumer", "operational_failure"] },
+  { case: "Post Office Horizon (UK)", outcome: "Vendor liable; concealment of known defects", principle: "Concealment of known software defects", tags: ["vendor", "software_defect", "concealment", "operational_failure"] },
+];
+
+function jaccard(a: string[], b: string[]): number {
+  const A = new Set(a);
+  const B = new Set(b);
+  let inter = 0;
+  for (const x of A) if (B.has(x)) inter++;
+  const union = new Set([...a, ...b]).size;
+  return union === 0 ? 0 : inter / union;
+}
+
+function incidentTags(args: {
+  title: string;
+  description: string;
+  category: string;
+  events: Event[];
+  agents: Agent[];
+  deviations: DetectedDeviation[];
+  severity: string;
+}): string[] {
+  const { title, description, category, events, agents, deviations, severity } = args;
+  const text = [title, description, category, ...events.map((e) => e.description ?? "")].join(" ").toLowerCase();
+  const tags = new Set<string>();
+  if (/misinformation|misrepresent|false|hallucinat|advice|recommend|representation/.test(text)) {
+    tags.add("misinformation");
+    tags.add("representation");
+  }
+  if (/chatbot|assistant|overview|search|bot|conversational/.test(text)) tags.add("chatbot");
+  if (/consumer|customer|public|user/.test(text) || /consumer/.test(category)) tags.add("consumer");
+  if (/refund|payment|financial|money|benefit|debt/.test(text)) tags.add("decision_support");
+  if (/vehicle|pedestrian|injur|physical|crash|safety/.test(text)) tags.add("physical_harm");
+  if (/bias|discriminat|protected class/.test(text)) tags.add("bias");
+  for (const a of agents) {
+    if (a.type === "ai_system") tags.add("ai_agent");
+    if (a.type === "deployer") tags.add("deployer");
+    if (a.type === "vendor") tags.add("vendor");
+  }
+  if (deviations.some((d) => d.mode === "oversight_mechanism_bypass")) tags.add("oversight_failure");
+  if (deviations.some((d) => d.mode === "ods_non_compliance" || d.mode === "model_drift")) tags.add("operational_failure");
+  if (severity === "critical" || severity === "high") tags.add("safety_critical");
+  return [...tags];
+}
+
+function matchPrecedents(
+  tags: string[]
+): Array<{ case: string; similarity: number; outcome: string; principle: string; sharedFactors: string[] }> {
+  return PRECEDENT_CORPUS.map((c) => ({
+    case: c.case,
+    similarity: +jaccard(tags, c.tags).toFixed(3),
+    outcome: c.outcome,
+    principle: c.principle,
+    sharedFactors: c.tags.filter((t) => tags.includes(t)),
+  }))
+    .filter((p) => p.similarity > 0)
+    .sort((a, b) => b.similarity - a.similarity || a.case.localeCompare(b.case))
+    .slice(0, 3);
 }
 
 // ─── Main export ───────────────────────────────────────────────────────────
@@ -222,25 +391,48 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
     const title = (body.title as string) ?? "Untitled incident";
     const category = (body.category as string) ?? "general";
 
-    const primaryAgent = agents[0] ?? { id: "agent_unknown", type: "ai_system" };
+    const primaryAgent = (agents[0] ?? { id: "agent_unknown", type: "ai_system" }) as Agent;
     const primaryType = primaryAgent.type ?? "ai_system";
-    let primaryScore = computePrimaryScore(
-      hash,
-      severity,
-      primaryType,
-      events.length,
-      agents.length
-    );
 
-    // Distribute remaining share using Shapley-inspired weighting
+    // ── Deterministic, evidence-derived scoring (no SHA-256 seeding) ───────
+    const description = (body.description as string | undefined) ?? "";
+    const evidenceTexts = [
+      title,
+      description,
+      ...events.map((e) => `${e.type ?? ""} ${e.description ?? ""}`),
+    ];
+    const detectedDeviations = detectDeviations(evidenceTexts, primaryAgent.id);
+    // Proxy for "a regulatory violation was mapped": high/critical incidents in
+    // a jurisdiction we cover. Kept simple and deterministic; the production
+    // engine derives this from the full regulatory mapping.
+    const regulatoryViolationProxy = severity === "critical" || severity === "high";
+    const fourFactor = computeFourFactor({
+      agents,
+      events,
+      primaryAgent,
+      severity,
+      deviations: detectedDeviations,
+      regulatoryViolation: regulatoryViolationProxy,
+    });
+    const { causalProximity, behaviouralDeviation, controllability, regulatoryAlignment } = fourFactor;
+    // Primary share = four-factor weighted score, spread down slightly as more
+    // co-agents share the blame. Clamp preserves the [0.25, 0.95] contract.
+    const fourFactorScore =
+      0.3 * causalProximity +
+      0.3 * behaviouralDeviation +
+      0.2 * controllability +
+      0.2 * regulatoryAlignment;
+    const agentSpread = Math.min((agents.length - 1) * 0.05, 0.2);
+    let primaryScore = clamp3(fourFactorScore - agentSpread, 0.25, 0.95);
+
+    // Distribute remaining share by agent-type liability bias (deterministic).
     const remainingShare = +(1 - primaryScore).toFixed(3);
     const secondaryAgents = agents.slice(1);
     const secondaryShares: Array<{ party: string; share: number }> = [];
     if (secondaryAgents.length > 0) {
-      const weights = secondaryAgents.map((a, i) => {
-        const typeWeight = AGENT_TYPE_LIABILITY_BIAS[a.type ?? "third_party"] ?? 0;
-        return Math.max(0.1, 0.5 + typeWeight + hashFloat(hash, 16 + i * 4, -0.1, 0.1));
-      });
+      const weights = secondaryAgents.map((a) =>
+        Math.max(0.1, 0.5 + (AGENT_TYPE_LIABILITY_BIAS[a.type ?? "third_party"] ?? 0))
+      );
       const totalWeight = weights.reduce((s, w) => s + w, 0);
       secondaryAgents.forEach((a, i) => {
         secondaryShares.push({
@@ -388,12 +580,14 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
     const rootCause = events.length > 0 ? events[0]!.id : "unknown";
     const butForChain = events.slice(0, Math.min(3, events.length)).map((e) => e.id);
 
-    // Deviation taxonomy (input-sensitive: more events = more deviations detected)
-    const deviationCount = Math.min(2 + Math.floor(events.length / 2), 5);
-    const deviations = Array.from({ length: deviationCount }, (_, i) => ({
-      mode: DEVIATION_TAXONOMY[hashInt(hash, 40 + i * 3, 0, DEVIATION_TAXONOMY.length - 1)],
-      confidence: hashFloat(hash, 44 + i * 3, 0.65, 0.95),
-      agent: agents[i % agents.length]?.id ?? primaryAgent.id,
+    // Deviation taxonomy — only modes whose evidence actually appears in the
+    // incident text (deterministic keyword detection, not a hash draw). An
+    // empty array honestly means "no recognised failure mode in the supplied text".
+    const deviations = detectedDeviations.map((d) => ({
+      mode: d.mode,
+      confidence: d.confidence,
+      agent: d.agent,
+      evidence: d.evidence,
     }));
 
     // Three-layer attribution
@@ -421,17 +615,19 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
         })),
     };
 
-    // Foreseeability (severity-sensitive)
-    const foreseeabilityScore = hashFloat(
-      hash,
-      48,
-      severity === "critical" ? 0.75 : severity === "high" ? 0.60 : 0.40,
-      severity === "critical" ? 0.95 : severity === "high" ? 0.85 : 0.75
-    );
+    // Foreseeability — derived from severity + whether a recognised failure
+    // mode was detected, not a hash draw.
+    const foreseeabilityScore = computeForeseeability(severity, detectedDeviations);
 
-    // Counterfactuals (event-count-sensitive)
+    // Counterfactuals — structural sensitivity proxy: a longer, clearer evidence
+    // chain (more events, a dominant primary) leaves less room for the share to
+    // swing under perturbation. Deterministic; not a hash draw.
     const perturbationsRun = Math.max(8, Math.min(events.length * 4, 24));
-    const maxSwingPP = hashFloat(hash, 52, 0.015, 0.08);
+    const maxSwingPP = clamp3(
+      0.09 - Math.min(events.length, 6) * 0.012 - (primaryScore > 0.7 ? 0.01 : 0),
+      0.01,
+      0.09
+    );
 
     // Regulatory mapping (jurisdiction-sensitive)
     const regulatorRelevant: Record<string, unknown> = {};
@@ -475,24 +671,30 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
       finding: "Nonconformity in AI risk assessment process",
     };
 
-    // Precedent matching
-    const precedentPool = [
-      { case: "Uber ATG v. Herzberg (2020)", similarity: 0.82, outcome: "Deployer 75% liable", principle: "Non-delegable duty of safety-critical oversight" },
-      { case: "Air Canada chatbot (2024)", similarity: 0.78, outcome: "Deployer 100% liable for chatbot representations", principle: "Agency theory — chatbot as agent of principal" },
-      { case: "COMPAS recidivism (2016)", similarity: 0.71, outcome: "Vendor liable for bias", principle: "Product defect — failure to validate on protected classes" },
-      { case: "Robodebt (AU 2019-2023)", similarity: 0.69, outcome: "Government deployer liable", principle: "Operational failure in automated decision-making" },
-      { case: "Horizon Post Office (UK 2024)", similarity: 0.65, outcome: "Vendor Fujitsu liable", principle: "Concealment of known defects" },
-    ];
-    const precedentCount = Math.min(3, 1 + Math.floor(events.length / 2));
-    const precedents = precedentPool
-      .slice(0, precedentCount)
-      .map((p, i) => ({
-        ...p,
-        similarity: hashFloat(hash, 56 + i * 2, p.similarity - 0.05, p.similarity + 0.05),
-      }));
+    // Precedent matching — real feature overlap (Jaccard) between the incident's
+    // derived factors and a small, checked-in corpus. `similarity` is documented
+    // factor overlap (not a learned score), and only cases that actually share
+    // factors are returned, so an empty list is an honest "no close analogue".
+    const incidentFactorTags = incidentTags({
+      title,
+      description,
+      category,
+      events,
+      agents,
+      deviations: detectedDeviations,
+      severity,
+    });
+    const precedents = matchPrecedents(incidentFactorTags);
 
-    // Damages (financial_impact_cents-sensitive)
-    const baseImpact = financialImpactCents ?? hashInt(hash, 16, 100000, 5000000);
+    // Damages — computed ONLY from a caller-supplied financial_impact_cents.
+    // When none is supplied the engine ABSTAINS rather than fabricating a figure
+    // (the prior demo seeded this from a hash; that is exactly the misleading
+    // behaviour we removed). Downstream dollar modules abstain in lockstep.
+    const hasImpact = typeof financialImpactCents === "number";
+    const baseImpact = hasImpact ? (financialImpactCents as number) : 0;
+    const DAMAGES_ABSTAINED_REASON =
+      "No financial_impact_cents supplied. Demo engine does not fabricate damages; " +
+      "provide an estimated impact to compute direct/consequential/punitive figures.";
     const sevMultiplier =
       severity === "critical" ? 2.8 : severity === "high" ? 1.9 : severity === "medium" ? 1.3 : 1.0;
     const directCents = Math.round(baseImpact * 0.6 * sevMultiplier);
@@ -610,36 +812,32 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
       basis: "Causal proximity to root-cause event (Hart & Honoré, 1985)",
     });
 
-    // Step 3 — Four-factor scoring components
-    const cp = hashFloat(hash, 28, 0.5, 0.95);
-    const bd = hashFloat(hash, 30, 0.4, 0.9);
-    const ct = hashFloat(hash, 32, 0.3, 0.85);
-    const ra = hashFloat(hash, 34, 0.2, 0.8);
+    // Step 3 — Four-factor scoring components (evidence-derived above)
     auditTrail.push({
       step: step++,
       rule_id: "4F-SCORE",
       category: "four_factor_scoring",
       finding:
-        `Four-factor model: causal_proximity=${cp.toFixed(3)} (w=0.30), ` +
-        `behavioural_deviation=${bd.toFixed(3)} (w=0.30), ` +
-        `controllability=${ct.toFixed(3)} (w=0.20), ` +
-        `regulatory_alignment=${ra.toFixed(3)} (w=0.20). ` +
+        `Four-factor model: causal_proximity=${causalProximity.toFixed(3)} (w=0.30), ` +
+        `behavioural_deviation=${behaviouralDeviation.toFixed(3)} (w=0.30), ` +
+        `controllability=${controllability.toFixed(3)} (w=0.20), ` +
+        `regulatory_alignment=${regulatoryAlignment.toFixed(3)} (w=0.20). ` +
         `Weighted score yields primary share ${pp(primaryScore)}%.`,
       effect_pp: pp(primaryScore),
       basis: "CausalLayer four-factor model v0.5 (FK-METHOD-2026-001)",
     });
 
-    // Step 4 — Severity weight applied
+    // Step 4 — Severity tier (folded into regulatory_alignment + damages)
     const sevW = SEVERITY_WEIGHTS[severity] ?? 0.64;
     auditTrail.push({
       step: step++,
       rule_id: "SEV-W",
       category: "four_factor_scoring",
       finding:
-        `Severity '${severity}' applied weight ${sevW.toFixed(2)} ` +
-        `(Δ ${((sevW - 0.64) * 0.4 * 100).toFixed(1)} pp on primary share).`,
-      effect_pp: +((sevW - 0.64) * 0.4 * 100).toFixed(1),
-      basis: "FaultKey severity calibration table (resolved-outcomes n=725)",
+        `Severity tier '${severity}' (weight ${sevW.toFixed(2)}) reflected in ` +
+        `regulatory_alignment and damages scaling.`,
+      effect_pp: 0,
+      basis: "FaultKey severity calibration table",
     });
 
     // Step 5 — Deviation taxonomy contributions
@@ -674,8 +872,9 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
       rule_id: "FORESEE",
       category: "foreseeability",
       finding:
-        `Foreseeability score=${foreseeabilityScore.toFixed(3)}. ` +
-        `Prior incidents in same sector documented in AIID database.`,
+        `Foreseeability score=${foreseeabilityScore.toFixed(3)} ` +
+        `(severity tier + recognised failure modes: ${detectedDeviations.map((d) => d.mode).join(", ") || "none"}). ` +
+        `Demo mode does not query an external incident database.`,
       effect_pp: 0,
       basis: "Wagon Mound test (foreseeability of damage)",
     });
@@ -736,12 +935,13 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
       step: step++,
       rule_id: "DMG-CALC",
       category: "damages",
-      finding:
-        `Direct=${(directCents / 100).toFixed(0)} ${currency}, ` +
-        `consequential=${(consequentialCents / 100).toFixed(0)} ${currency}, ` +
-        `punitive=${(punitiveCents / 100).toFixed(0)} ${currency}. ` +
-        `Total=${(totalCents / 100).toFixed(0)} ${currency} ` +
-        `(range ${(rangeLowCents / 100).toFixed(0)}–${(rangeHighCents / 100).toFixed(0)} ${currency}).`,
+      finding: hasImpact
+        ? `Direct=${(directCents / 100).toFixed(0)} ${currency}, ` +
+          `consequential=${(consequentialCents / 100).toFixed(0)} ${currency}, ` +
+          `punitive=${(punitiveCents / 100).toFixed(0)} ${currency}. ` +
+          `Total=${(totalCents / 100).toFixed(0)} ${currency} ` +
+          `(range ${(rangeLowCents / 100).toFixed(0)}–${(rangeHighCents / 100).toFixed(0)} ${currency}).`
+        : `ABSTAINED — no financial_impact_cents supplied; damages not computed (demo engine does not fabricate a figure).`,
       effect_pp: 0,
       basis: "Direct + consequential + punitive damages model",
     });
@@ -753,7 +953,9 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
       category: "underwriting",
       finding:
         `Risk score=${riskScore}, grade=${grade}, recommendation=${recommendation}. ` +
-        `Expected annual loss=${(expectedAnnualLossCents / 100).toFixed(0)} ${currency}.`,
+        (hasImpact
+          ? `Expected annual loss=${(expectedAnnualLossCents / 100).toFixed(0)} ${currency}.`
+          : `Expected annual loss not computed (damages abstained).`),
       effect_pp: 0,
       basis: "FaultKey underwriting grade matrix",
     });
@@ -801,7 +1003,7 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
         category,
         severity,
         jurisdiction,
-        financialImpactCents: financialImpactCents ?? baseImpact,
+        financialImpactCents: hasImpact ? financialImpactCents : null,
         currency,
         deterministicOnly: true,
       },
@@ -811,8 +1013,11 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
         primaryPartyName: primaryAgent.name ?? "Primary AI System",
         primaryShare: primaryScore,
         secondary: secondaryShares,
-        confidence: hashFloat(hash, 20, 0.65, 0.88),
-        calibratedBy: "demo mode — illustrative only (production: 725 resolved outcomes)",
+        // Evidence-completeness proxy (events with timestamps/descriptions,
+        // typed agents) — NOT a calibrated probability against resolved outcomes.
+        confidence: evidenceConfidence(events, agents),
+        confidenceBasis: "evidence_completeness",
+        calibrationNote: "demo mode — not calibrated against resolved outcomes",
       },
       causalGraph: {
         nodes: causalNodes,
@@ -830,29 +1035,27 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
       liabilityMode,
       fourFactorScoring: {
         primaryAgent: primaryAgent.id,
-        causalProximity: hashFloat(hash, 28, 0.5, 0.95),
-        behaviouralDeviation: hashFloat(hash, 30, 0.4, 0.9),
-        controllability: hashFloat(hash, 32, 0.3, 0.85),
-        regulatoryAlignment: hashFloat(hash, 34, 0.2, 0.8),
+        causalProximity,
+        behaviouralDeviation,
+        controllability,
+        regulatoryAlignment,
         weights: { causalProximity: 0.30, behaviouralDeviation: 0.30, controllability: 0.20, regulatoryAlignment: 0.20 },
       },
       ruleSetVersion,
       euRuleOverlay: euOverlay,
       cascadeAttenuation,
       crossCaseCalibration: {
-        adjustmentAppliedPP: hashFloat(hash, 36, -0.08, 0.08),
+        performed: false,
+        note: "Demo mode does not calibrate against resolved outcomes. The production engine applies cross-case calibration here; no adjustment was made to the scores above.",
         categoryProfile: category,
-        jurisdictionCalibrated: ["AU", "US", "EU", "UK", "CA", "SG"].includes(jurisdiction),
-        resolvedOutcomesUsed: 725,
+        jurisdictionRecognised: ["AU", "US", "EU", "UK", "CA", "SG"].includes(jurisdiction),
       },
       threeLayerAttribution: threeLayer,
       foreseeability: {
         score: foreseeabilityScore,
-        evidence: [
-          "Prior incidents in same sector documented in AIID",
-          severity === "critical" ? "Regulatory warnings issued pre-deployment" : "State of the art at time of deployment",
-          "Deployer's internal risk assessment (if available)",
-        ],
+        basis: "severity tier + recognised failure mode(s)",
+        recognisedFailureModes: detectedDeviations.map((d) => d.mode),
+        note: "Demo mode does not query an external incident database; score is derived from the submitted incident only.",
       },
       counterfactuals: {
         perturbationsRun,
@@ -878,21 +1081,25 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
       },
       regulatorRelevant,
       precedents,
-      damages: {
-        directCents,
-        consequentialCents,
-        punitiveCents,
-        totalCents,
-        rangeLowCents,
-        rangeHighCents,
-        calibrationR2: 0.86,
-        currency,
-      },
+      damages: hasImpact
+        ? {
+            directCents,
+            consequentialCents,
+            punitiveCents,
+            totalCents,
+            rangeLowCents,
+            rangeHighCents,
+            currency,
+          }
+        : { status: "abstained", reason: DAMAGES_ABSTAINED_REASON, currency },
       underwriting: {
+        // riskScore/grade/recommendation derive from liability share + severity,
+        // so they are emitted even without a damages figure; the dollar field is
+        // null when damages were abstained.
         riskScore,
         grade,
         recommendation,
-        expectedAnnualLossCents,
+        expectedAnnualLossCents: hasImpact ? expectedAnnualLossCents : null,
         exclusions: [
           "Intentional misuse by end-user",
           "Pre-existing known defects not disclosed",
@@ -906,20 +1113,45 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
             ]
           : [],
       },
-      actuarial: {
-        grossPremiumCents,
-        netPremiumCents,
-        lossRatioEstimate,
-        sectorLoadingFactor: hashFloat(hash, 58, 1.0, 1.8),
-        jurisdictionMultiplier: jurisdiction === "US" ? 1.4 : jurisdiction === "EU" ? 1.2 : 1.0,
-      },
-      blastRadius: {
-        perAgent: perAgentBlast,
-        defenceCostsCents: defenceCosts,
-        regulatoryFinesCents: regulatoryFines,
-        reputationMultiplier,
-        totalExposureCents,
-      },
+      actuarial: hasImpact
+        ? {
+            grossPremiumCents,
+            netPremiumCents,
+            lossRatioEstimate,
+            sectorLoadingFactor: hashFloat(hash, 58, 1.0, 1.8),
+            jurisdictionMultiplier: jurisdiction === "US" ? 1.4 : jurisdiction === "EU" ? 1.2 : 1.0,
+          }
+        : { status: "abstained", reason: DAMAGES_ABSTAINED_REASON },
+      blastRadius: hasImpact
+        ? {
+            perAgent: perAgentBlast,
+            defenceCostsCents: defenceCosts,
+            regulatoryFinesCents: regulatoryFines,
+            reputationMultiplier,
+            totalExposureCents,
+          }
+        : {
+            status: "abstained",
+            reason: DAMAGES_ABSTAINED_REASON,
+            perAgentShares: agents.map((a, i) => ({
+              agent: a.id,
+              share: i === 0 ? primaryScore : secondaryShares[i - 1]?.share ?? 0,
+            })),
+          },
+      // Honest disclosure of the fields that are STILL illustrative placeholders
+      // in demo mode (not derived from the submitted incident).
+      _synthetic_fields: [
+        "stressTest.results[].riskScore",
+        "stressTest.highestRisk",
+        "discoverySubpoenaChecklist[].ifFoundMaxSwingPP",
+        ...(hasImpact
+          ? ["actuarial.lossRatioEstimate", "actuarial.sectorLoadingFactor", "blastRadius.reputationMultiplier"]
+          : []),
+      ],
+      _synthetic_fields_note:
+        "These fields remain illustrative placeholders in demo mode and are NOT derived from your input. " +
+        "Every other scored field (verdict, fourFactorScoring, deviationTaxonomy, foreseeability, precedents, " +
+        "damages, counterfactuals) is computed deterministically from the submitted incident.",
       stressTest: {
         scenariosTested: 8,
         certification: stressCertification,
