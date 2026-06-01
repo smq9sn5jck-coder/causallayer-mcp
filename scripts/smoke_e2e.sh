@@ -38,8 +38,9 @@ step "2. Worker proxy of /api/v2/issuers (no MCP)"
 # Worker exposes /healthz at the root for liveness; if we need the issuer
 # proxy via Worker we go through MCP only — not a direct REST passthrough.
 HEALTH=$(curl -fsS "${MCP}/healthz" || echo "")
-if [[ "${HEALTH}" != *"ok"* ]]; then
-  red "FAIL: Worker /healthz did not return ok (got: '${HEALTH}')"
+# /healthz returns a JSON liveness object identified by its service name.
+if [[ "${HEALTH}" != *'"causallayer-mcp"'* ]]; then
+  red "FAIL: Worker /healthz did not return the expected liveness object (got: '${HEALTH}')"
   exit 1
 fi
 green "OK"
