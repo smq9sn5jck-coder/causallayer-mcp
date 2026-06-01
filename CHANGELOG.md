@@ -2,6 +2,35 @@
 
 All notable changes to **CausalLayer MCP** are documented in this file. The format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] — 2026-06-01
+
+### Changed
+- **Standalone/demo engine** (the artifact shipped on npm) now derives its
+  scores from the submitted incident instead of SHA-256-seeded placeholders:
+  deviation modes are detected from the incident text, four-factor scores come
+  from the causal graph + agent types + severity, foreseeability from severity
+  and recognised modes, and precedents are matched by real factor overlap.
+- Damages now require a caller-supplied `financial_impact_cents` and **abstain**
+  rather than fabricating a figure; actuarial/blast-radius abstain in lockstep.
+- npm package name aligned to the published, unscoped `causallayer-mcp`.
+- `serverInfo.version` and the upstream `User-Agent` synced to the package
+  version (were `0.4.0` / `0.3.1`).
+
+### Removed
+- Unsubstantiated calibration claims from demo output (`calibrationR2`,
+  `resolvedOutcomesUsed: 725`); `crossCaseCalibration` now reports
+  `performed: false`.
+
+### Fixed
+- Single-party incidents now apportion the full 100% to the sole identified
+  party (previously the split summed to the four-factor score).
+
+### Added
+- Server-side adoption analytics (Cloudflare Worker, not in the npm bundle):
+  npm-downloads trend (daily cron), real-user retention (DAU/WAU/MAU), and a
+  bot-filtered conversion funnel, surfaced in `/admin/stats`.
+- Determinism/invariant fuzz tests for the standalone engine.
+
 ## [0.2.2] — 2026-05-17
 
 ### Added

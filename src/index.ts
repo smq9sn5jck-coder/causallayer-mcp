@@ -159,7 +159,7 @@ async function callApi<T = unknown>(
   const url = `${env.CAUSALLAYER_API_BASE.replace(/\/+$/, "")}${path}`;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    "User-Agent": `causallayer-mcp/0.3.1 (${env.CAUSALLAYER_ENV})`,
+    "User-Agent": `causallayer-mcp/0.4.1 (${env.CAUSALLAYER_ENV})`,
   };
   if (opts.auth !== false) {
     if (!env.CAUSALLAYER_API_KEY) {
@@ -354,7 +354,7 @@ async function withBilling<T>(
 export class CausalLayerMCP extends McpAgent<Env, unknown, SessionProps> {
   server = new McpServer({
     name: "causallayer-mcp",
-    version: "0.4.0",
+    version: "0.4.1",
   });
 
   async init() {
@@ -1482,7 +1482,7 @@ export default {
       });
       return json({
         name: "causallayer-mcp",
-        version: "0.4.0",
+        version: "0.4.1",
         env: env.CAUSALLAYER_ENV,
         billing_mode: env.BILLING_MODE,
         api_base: env.CAUSALLAYER_API_BASE,
