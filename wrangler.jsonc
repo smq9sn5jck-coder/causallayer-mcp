@@ -74,6 +74,10 @@
     {
       "binding": "WEEKLY_PROOFS",
       "id": "dc7d2daef1af447e8ad0d9d877a8dfca"
+    },
+    {
+      "binding": "LEADS_KV",
+      "id": "de13048a53794cfda15a2bcc046df5cf"
     }
   ],
 
@@ -127,6 +131,10 @@
         {
           "binding": "WEEKLY_PROOFS",
           "id": "dc7d2daef1af447e8ad0d9d877a8dfca"
+        },
+        {
+          "binding": "LEADS_KV",
+          "id": "de13048a53794cfda15a2bcc046df5cf"
         }
       ],
       "vars": {
