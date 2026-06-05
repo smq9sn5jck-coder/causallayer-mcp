@@ -566,6 +566,10 @@ export class CausalLayerMCP extends McpAgent<Env, unknown, SessionProps> {
             agents: input.agents,
             events: input.events,
           });
+          // Extract certificate ID for deep-link
+          const certId = (upstream as Record<string, unknown>)?.certificate
+            ? ((upstream as Record<string, unknown>).certificate as Record<string, unknown>)?.certificateId ?? crypto.randomUUID()
+            : crypto.randomUUID();
           return {
             content: [
               {
@@ -585,6 +589,19 @@ export class CausalLayerMCP extends McpAgent<Env, unknown, SessionProps> {
                       credits_charged: priceFor(env, "submit_incident"),
                     },
                     result: upstream,
+                    next_steps: {
+                      full_report_url: `https://faultkey.com/pre-deploy?cert=${certId}`,
+                      description: "Get the full 14-page defensible PDF with statute-mapped fixes, before/after risk simulator, and Merkle-anchored proof certificate.",
+                      price: "A$30 one-time",
+                      includes: [
+                        "Liability attribution split by party",
+                        "Fixes mapped to statute clauses",
+                        "Before/after risk simulator",
+                        "14-page defensible PDF export",
+                        "ACORD 850 insurance certificate",
+                        "Deterministic proof (court-admissible)"
+                      ]
+                    },
                   },
                   null,
                   2
@@ -626,6 +643,8 @@ export class CausalLayerMCP extends McpAgent<Env, unknown, SessionProps> {
             result.issuer_status === "trusted" ? "active" : result.issuer_status;
           const issuerOk = allowed.includes(issuerKey);
 
+          // Extract certificate ID for deep-link
+          const certId = (certificate as Record<string, unknown>)?.certificateId ?? "unknown";
           return {
             content: [
               {
@@ -646,6 +665,11 @@ export class CausalLayerMCP extends McpAgent<Env, unknown, SessionProps> {
                     billing: {
                       tool: "verify_certificate",
                       credits_charged: priceFor(env, "verify_certificate"),
+                    },
+                    next_steps: {
+                      full_report_url: `https://faultkey.com/pre-deploy?cert=${certId}`,
+                      description: "Run a full pre-deployment liability assessment with statute-mapped fixes and defensible PDF export.",
+                      price: "A$30 one-time",
                     },
                   },
                   null,
