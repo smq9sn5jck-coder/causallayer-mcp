@@ -193,6 +193,151 @@ function detectDeviations(texts: string[], primaryAgentId: string): DetectedDevi
   return found;
 }
 
+// ─── Primary-party selection by causal proximity (deterministic) ────────────
+// The engine determines who is PRIMARILY liable from the evidence, not from
+// the order agents happen to appear in the request. Selection is fully
+// deterministic and byte-stable regardless of caller ordering:
+//   1. most events actored (by actor_id)
+//   2. actor of the root-cause (first) event
+//   3. higher agent-type liability bias
+//   4. lexicographic agent id (final determinism guarantee)
+// Backwards-compatible: if NO event carries an actor_id (legacy single-actor
+// incidents), every agent scores 0 events and the tie-breaks fall through to
+// the first agent — preserving prior behaviour for untagged inputs.
+function selectPrimaryAgent(agents: Agent[], events: Event[]): Agent {
+  if (agents.length === 0) return { id: "agent_unknown", type: "ai_system" } as Agent;
+  if (agents.length === 1) return agents[0]!;
+  const anyActorTagged = events.some((e) => e.actor_id);
+  if (!anyActorTagged) return agents[0]!;
+  const rootActorId = events[0]?.actor_id;
+  const eventCountByAgent = new Map<string, number>();
+  for (const e of events) {
+    if (!e.actor_id) continue;
+    eventCountByAgent.set(e.actor_id, (eventCountByAgent.get(e.actor_id) ?? 0) + 1);
+  }
+  const scored = agents.map((a) => ({
+    agent: a,
+    events: eventCountByAgent.get(a.id) ?? 0,
+    isRoot: a.id === rootActorId,
+    bias: AGENT_TYPE_LIABILITY_BIAS[a.type ?? "third_party"] ?? 0,
+  }));
+  scored.sort(
+    (x, y) =>
+      y.events - x.events ||
+      Number(y.isRoot) - Number(x.isRoot) ||
+      y.bias - x.bias ||
+      x.agent.id.localeCompare(y.agent.id)
+  );
+  return scored[0]!.agent;
+}
+
+// ─── Role-aware liability partition (FK-METHOD-2026-004) ────────────────────
+// A liability-attribution engine must never allocate fault to a party that is
+// structurally incapable of being liable for the incident. Two classes are
+// excluded from the share split and instead listed as explicit non-liable
+// parties on the certificate (transparent, never hidden, never a bare 0%):
+//
+//   1. OVERSIGHT roles — operator_role/type of `regulator` or `auditor`.
+//      These parties investigate or supervise; they do not cause the harm.
+//      (e.g. NTSB investigating an autonomous-vehicle fatality.)
+//
+//   2. VICTIMS — the harmed party. The role taxonomy has no `victim` role;
+//      victims are carried as `user`. We therefore detect a victim
+//      structurally: a party that is the SUBJECT of a `harm` event but is
+//      NEVER the ACTOR of any fault-bearing event (failure / incident /
+//      deployment / decision). This preserves contributory fault for a
+//      negligent operator (who actors a failure) while excluding a pure
+//      victim (who only suffers harm).
+//
+// Determinism: the partition depends only on agent fields and event
+// actor_id/type/description, so it is byte-stable for identical inputs.
+// Safety: if exclusion would leave zero liable agents, we DO NOT exclude
+// (every incident must attribute liability to at least one party); the
+// non-liable list is returned empty and all agents remain in the split.
+const OVERSIGHT_ROLES = new Set(["regulator", "auditor"]);
+const FAULT_EVENT_TYPES = new Set([
+  "failure",
+  "incident",
+  "deployment",
+  "decision",
+  "action",
+  "output",
+  "recommendation",
+  "breach",
+  "violation",
+]);
+
+export interface NonLiableParty {
+  party: string;
+  name: string;
+  role: string;
+  reason: string;
+}
+
+export function partitionAgentsByLiability(
+  agents: Agent[],
+  events: Event[],
+): { liableAgents: Agent[]; nonLiableParties: NonLiableParty[] } {
+  if (agents.length <= 1) return { liableAgents: agents, nonLiableParties: [] };
+
+  // Index: did this agent ACTOR any fault-bearing event?
+  const actoredFaultEvent = new Set<string>();
+  // Index: is this agent the SUBJECT of a harm event (named in a harm-event
+  // description, or the actor of a harm event when no one else is named)?
+  const subjectOfHarm = new Set<string>();
+  const nameById = new Map<string, string>();
+  for (const a of agents) if (a.name) nameById.set(a.id, a.name.toLowerCase());
+
+  for (const e of events) {
+    const etype = (e.type ?? "").toLowerCase();
+    if (e.actor_id && FAULT_EVENT_TYPES.has(etype)) actoredFaultEvent.add(e.actor_id);
+    if (etype === "harm") {
+      const desc = (e.description ?? "").toLowerCase();
+      // Any agent named in the harm description is a subject of harm.
+      for (const a of agents) {
+        const nm = nameById.get(a.id);
+        if (nm && nm.length > 2 && desc.includes(nm)) subjectOfHarm.add(a.id);
+      }
+    }
+  }
+
+  const liableAgents: Agent[] = [];
+  const nonLiableParties: NonLiableParty[] = [];
+  for (const a of agents) {
+    const role = (a.operator_role ?? a.type ?? "").toLowerCase();
+    const type = (a.type ?? "").toLowerCase();
+    if (OVERSIGHT_ROLES.has(role) || OVERSIGHT_ROLES.has(type)) {
+      nonLiableParties.push({
+        party: a.id,
+        name: a.name ?? a.id,
+        role: a.operator_role ?? a.type ?? "third_party",
+        reason:
+          "Oversight / investigatory party (regulator or auditor) — supervises or investigates the incident and is not a fault-bearing agent.",
+      });
+      continue;
+    }
+    // Victim: subject of harm, never actor of a fault-bearing event.
+    if (subjectOfHarm.has(a.id) && !actoredFaultEvent.has(a.id)) {
+      nonLiableParties.push({
+        party: a.id,
+        name: a.name ?? a.id,
+        role: a.operator_role ?? a.type ?? "user",
+        reason:
+          "Harmed party (victim) — the subject of harm in the incident, not a party whose conduct caused it. Excluded from the liability allocation.",
+      });
+      continue;
+    }
+    liableAgents.push(a);
+  }
+
+  // Safety net: never produce an empty liable set. If everything was excluded
+  // (degenerate input), keep all agents liable and emit no exclusions.
+  if (liableAgents.length === 0) {
+    return { liableAgents: agents, nonLiableParties: [] };
+  }
+  return { liableAgents, nonLiableParties };
+}
+
 // ─── Four-factor scoring derived from the actual causal graph + types ───────
 interface FourFactor {
   causalProximity: number;
@@ -391,7 +536,18 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
     const title = (body.title as string) ?? "Untitled incident";
     const category = (body.category as string) ?? "general";
 
-    const primaryAgent = (agents[0] ?? { id: "agent_unknown", type: "ai_system" }) as Agent;
+    // ── Role-aware liability partition (FK-METHOD-2026-004) ───────────────
+    // Exclude oversight parties (regulator/auditor) and pure victims from the
+    // liability split BEFORE primary selection. They are surfaced separately
+    // as verdict.nonLiableParties. Liability is attributed only across parties
+    // whose conduct can bear fault. See partitionAgentsByLiability().
+    const { liableAgents, nonLiableParties } = partitionAgentsByLiability(agents, events);
+
+    // Primary party selected by causal proximity (see selectPrimaryAgent),
+    // NOT by array order — the engine decides who is liable from the evidence.
+    // Selection runs over the LIABLE set only, so a regulator/victim can never
+    // be chosen as the primarily-liable party.
+    const primaryAgent = selectPrimaryAgent(liableAgents, events);
     const primaryType = primaryAgent.type ?? "ai_system";
 
     // ── Deterministic, evidence-derived scoring (no SHA-256 seeding) ───────
@@ -422,12 +578,17 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
       0.3 * behaviouralDeviation +
       0.2 * controllability +
       0.2 * regulatoryAlignment;
-    const agentSpread = Math.min((agents.length - 1) * 0.05, 0.2);
+    // Spread is sized by the number of LIABLE co-agents, not total agents, so
+    // excluding a regulator/victim does not artificially deflate the primary.
+    const agentSpread = Math.min((liableAgents.length - 1) * 0.05, 0.2);
     let primaryScore = clamp3(fourFactorScore - agentSpread, 0.25, 0.95);
 
     // Distribute remaining share by agent-type liability bias (deterministic).
+    // Secondary agents = every LIABLE agent EXCEPT the causally-selected
+    // primary. Non-liable parties (oversight/victims) are never in this set,
+    // so they receive no share.
     const remainingShare = +(1 - primaryScore).toFixed(3);
-    const secondaryAgents = agents.slice(1);
+    const secondaryAgents = liableAgents.filter((a) => a.id !== primaryAgent.id);
     const secondaryShares: Array<{ party: string; share: number }> = [];
     if (secondaryAgents.length > 0) {
       const weights = secondaryAgents.map((a) =>
@@ -480,6 +641,41 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
       }
     }
 
+    // ── Primary-dominance invariant (FK-METHOD-2026-003) ──────────────────
+    // The party selected as PRIMARY by causal proximity must also carry the
+    // largest single liability share — otherwise the "primary" label
+    // contradicts the numbers. Cascade attenuation can sub-linearly demote the
+    // root-cause actor below a downstream actor; when that happens we
+    // deterministically swap shares so the primary holds at least the top
+    // position, then renormalise so all shares still sum to 1.0. This changes
+    // only the magnitude ordering, never which party was selected as primary.
+    if (secondaryShares.length > 0) {
+      const topSecondary = secondaryShares.reduce(
+        (mx, s) => (s.share > mx ? s.share : mx),
+        0,
+      );
+      if (topSecondary > primaryScore) {
+        // Find the single highest secondary (deterministic tie-break by party id)
+        let leader = secondaryShares[0]!;
+        for (const s of secondaryShares) {
+          if (s.share > leader.share || (s.share === leader.share && s.party < leader.party)) {
+            leader = s;
+          }
+        }
+        // Swap the primary's share with the leading secondary's share so the
+        // evidence-selected primary becomes the largest share.
+        const swapped = leader.share;
+        leader.share = primaryScore;
+        primaryScore = swapped;
+      }
+      // Renormalise to guard against rounding drift introduced by the swap.
+      const sumAll = primaryScore + secondaryShares.reduce((s, x) => s + x.share, 0);
+      if (sumAll > 0 && Math.abs(sumAll - 1) > 0.0005) {
+        primaryScore = +(primaryScore / sumAll).toFixed(3);
+        for (const s of secondaryShares) s.share = +(s.share / sumAll).toFixed(3);
+      }
+    }
+
     // ── Apply EU rule-set if jurisdiction + trigger gates engage ───────────
     const euFlagsRaw = (body.eu_flags as Record<string, unknown> | undefined) ?? {};
     const euFlags: EuRuleFlags = {
@@ -519,11 +715,13 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
       ruleSetVersion = EU_RULE_SET_VERSION;
     }
 
-    // Determine verdict kind
+    // Determine verdict kind from the number of LIABLE parties (a regulator or
+    // victim does not make this a "three-party" liability split).
+    const liablePartyCount = liableAgents.length;
     const verdictKind =
-      agents.length <= 1
+      liablePartyCount <= 1
         ? "single_party"
-        : agents.length === 2
+        : liablePartyCount === 2
           ? "shared_liability_two_party"
           : "shared_liability_three_party";
 
@@ -736,8 +934,14 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
     const totalExposureCents = Math.round(
       (totalCents + defenceCosts + regulatoryFines) * reputationMultiplier
     );
-    const perAgentBlast = agents.map((a, i) => {
-      const share = i === 0 ? primaryScore : (secondaryShares[i - 1]?.share ?? 0);
+    // Blast radius per agent. Share is looked up by agent id (not array index):
+    // the primary holds primaryScore, each liable secondary its computed share,
+    // and every non-liable party (oversight/victim) is explicitly 0%.
+    const perAgentBlast = agents.map((a) => {
+      const share =
+        a.id === primaryAgent.id
+          ? primaryScore
+          : (secondaryShares.find((s) => s.party === a.id)?.share ?? 0);
       return {
         agent: a.id,
         liabilityShareCents: Math.round(totalCents * share),
@@ -799,11 +1003,27 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
       rule_id: "G2-DETERMINISTIC",
       category: "input_validation",
       finding:
-        `Incident accepted: ${agents.length} agent(s), ${events.length} event(s), severity=${severity}, jurisdiction=${jurisdiction}. ` +
+        `Incident accepted: ${agents.length} agent(s) (${liableAgents.length} liable, ${nonLiableParties.length} non-liable), ` +
+        `${events.length} event(s), severity=${severity}, jurisdiction=${jurisdiction}. ` +
         `deterministic_only=true verified; no LLM used downstream.`,
       effect_pp: 0,
       basis: "FaultKey Guardrail G2 (CausalLayer Protocol §1.3)",
     });
+
+    // Step 1b — Role-aware liability partition (only when parties were excluded)
+    if (nonLiableParties.length > 0) {
+      auditTrail.push({
+        step: step++,
+        rule_id: "ROLE-EXCL",
+        category: "input_validation",
+        finding:
+          `${nonLiableParties.length} part(y/ies) excluded from the liability split as structurally non-liable: ` +
+          nonLiableParties.map((p) => `${p.name} (${p.role})`).join("; ") +
+          `. Oversight bodies (regulator/auditor) and harmed parties (victims) do not bear fault share.`,
+        effect_pp: 0,
+        basis: "FK-METHOD-2026-004 role-aware liability partition",
+      });
+    }
 
     // Step 2 — Primary party identification
     auditTrail.push({
@@ -1018,6 +1238,11 @@ export async function standaloneResponse(input: StandaloneInput): Promise<unknow
         primaryPartyName: primaryAgent.name ?? "Primary AI System",
         primaryShare: primaryScore,
         secondary: secondaryShares,
+        // Parties shown on the certificate but excluded from the liability
+        // split because they cannot bear fault for the incident (regulators/
+        // auditors = oversight; victims = harmed party). Transparent, never a
+        // bare 0% line item competing for share. See FK-METHOD-2026-004.
+        nonLiableParties,
         // Evidence-completeness proxy (events with timestamps/descriptions,
         // typed agents) — NOT a calibrated probability against resolved outcomes.
         confidence: evidenceConfidence(events, agents),
