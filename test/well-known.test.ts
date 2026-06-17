@@ -112,3 +112,35 @@ describe("byte-stable JSON serialization", () => {
     expect(a).toBe(b);
   });
 });
+
+describe("/robots.txt route", () => {
+  it("returns a Response when /robots.txt is requested", async () => {
+    const res = handleWellKnown("/robots.txt");
+    expect(res).not.toBeNull();
+    expect(res!.status).toBe(200);
+    expect(res!.headers.get("content-type")).toBe("text/plain; charset=utf-8");
+  });
+  it("body explicitly allows ClaudeBot, GPTBot, PerplexityBot, CCBot", async () => {
+    const res = handleWellKnown("/robots.txt")!;
+    const body = await res.text();
+    expect(body).toMatch(/User-agent: ClaudeBot[\s\S]*Allow: \//);
+    expect(body).toMatch(/User-agent: GPTBot[\s\S]*Allow: \//);
+    expect(body).toMatch(/User-agent: PerplexityBot[\s\S]*Allow: \//);
+    expect(body).toMatch(/User-agent: CCBot[\s\S]*Allow: \//);
+  });
+  it("body disallows /admin/ and /mcp for the default user-agent", async () => {
+    const res = handleWellKnown("/robots.txt")!;
+    const body = await res.text();
+    expect(body).toMatch(/Disallow: \/admin\//);
+    expect(body).toMatch(/Disallow: \/mcp/);
+  });
+  it("body includes the sitemap pointer", async () => {
+    const res = handleWellKnown("/robots.txt")!;
+    const body = await res.text();
+    expect(body).toContain("Sitemap: https://faultkey.com/sitemap.xml");
+  });
+  it("returns null for non-matching paths (e.g. /robots)", () => {
+    expect(handleWellKnown("/robots")).toBeNull();
+    expect(handleWellKnown("/robots.txt/extra")).toBeNull();
+  });
+});
