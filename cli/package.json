@@ -45,6 +45,6 @@
     "node": ">=18"
   },
   "dependencies": {
-    "mcp-remote": "^0.1.10"
+    "mcp-remote": "^0.3.1"
   }
 }
